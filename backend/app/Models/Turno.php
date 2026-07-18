@@ -14,6 +14,8 @@ class Turno extends Model
 
     protected $fillable = [
         'numero_turno',
+        'fecha_turno',
+        'consecutivo_diario',
         'area_id',
         'paciente_id',
         'examen_paciente_id',
@@ -36,6 +38,7 @@ class Turno extends Model
             'estado' => EstadoTurno::class,
             'origen' => OrigenTurno::class,
             'llamado_en' => 'datetime',
+            'fecha_turno' => 'date',
             'completado_en' => 'datetime',
             'ausente_en' => 'datetime',
             'metadatos' => 'array',

@@ -36,7 +36,7 @@ export function DisplayPage() {
   const pusherRef = useRef<Pusher | null>(null);
 
   const fetchData = () => {
-    api.get('/display/todas').then(res => {
+    api.get('/public/display').then(res => {
       const data = res.data.areas || [];
       setAreas(data);
       setUltimoLlamado(prev => {
@@ -52,7 +52,7 @@ export function DisplayPage() {
 
   useEffect(() => {
     fetchData();
-    api.get('/videos/playlist').then(res => {
+    api.get('/public/videos/playlist').then(res => {
       setVideos(res.data.data || res.data);
     }).catch(() => {});
   }, []);
@@ -163,7 +163,7 @@ export function DisplayPage() {
                   <div className="absolute inset-[-40px] rounded-full blur-[60px] opacity-30 pointer-events-none" style={{ background: heroArea.color }} />
                   <p className="font-display font-extrabold leading-none tracking-tight" style={{ fontSize: 'clamp(72px, 12vw, 140px)', color: heroArea.color, animation: 'numFlash 0.8s ease-out' }}>{heroTurno.numero_turno}</p>
                 </div>
-                <p className="text-[clamp(20px,2.5vw,32px)] font-medium opacity-90 tracking-tight mb-2" style={{ animation: 'fadeSlideIn 0.6s ease-out 0.2s both' }}>{heroTurno.nombre_paciente}</p>
+                <p className="text-[clamp(20px,2.5vw,32px)] font-medium opacity-90 tracking-tight mb-2" style={{ animation: 'fadeSlideIn 0.6s ease-out 0.2s both' }}>{heroTurno.nombre_publico}</p>
                 {heroTurno.examen_paciente?.tipo_examen?.nombre && (
                   <p className="text-[clamp(16px,2vw,22px)] font-medium opacity-60 mb-2" style={{ animation: 'fadeSlideIn 0.6s ease-out 0.3s both' }}>{heroTurno.examen_paciente.tipo_examen.nombre}</p>
                 )}

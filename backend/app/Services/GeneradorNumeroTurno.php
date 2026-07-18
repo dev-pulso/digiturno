@@ -7,20 +7,25 @@ use Illuminate\Support\Facades\DB;
 
 class GeneradorNumeroTurno
 {
-    public function generar(Area $area): string
+    /** @return array{numero_turno: string, fecha_turno: string, consecutivo_diario: int} */
+    public function generar(Area $area): array
     {
         $prefijo = $area->prefijo;
 
+        $fecha = now(config('app.timezone'))->toDateString();
         $ultimoTurno = DB::table('turnos')
             ->where('area_id', $area->id)
-            ->orderBy('id', 'desc')
+            ->where('fecha_turno', $fecha)
+            ->orderByDesc('consecutivo_diario')
             ->lockForUpdate()
             ->first();
 
-        $siguienteNumero = $ultimoTurno
-            ? intval(substr($ultimoTurno->numero_turno, strlen($prefijo) + 1)) + 1
-            : 1;
+        $siguienteNumero = $ultimoTurno ? ((int) $ultimoTurno->consecutivo_diario) + 1 : 1;
 
-        return $prefijo . '-' . str_pad($siguienteNumero, 3, '0', STR_PAD_LEFT);
+        return [
+            'numero_turno' => $prefijo . '-' . str_pad((string) $siguienteNumero, 3, '0', STR_PAD_LEFT),
+            'fecha_turno' => $fecha,
+            'consecutivo_diario' => $siguienteNumero,
+        ];
     }
 }

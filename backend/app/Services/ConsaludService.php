@@ -15,9 +15,9 @@ class ConsaludService
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(env('API_URL_CONSALUD', ''), '/');
-        $this->user = env('CONSALUD_API_USER', '');
-        $this->password = env('CONSALUD_API_PASSWORD', '');
+        $this->baseUrl = config('services.consalud.url');
+        $this->user = (string) config('services.consalud.api_user');
+        $this->password = (string) config('services.consalud.api_password');
     }
 
     public function buscarPacientes(string $busqueda): array
@@ -30,7 +30,6 @@ class ConsaludService
 
         try {
             $response = Http::withToken($token)
-                ->withoutVerifying()
                 ->timeout(30)
                 ->get($this->baseUrl . '/historias/ingresos/gestion', [
                     'busqueda' => $busqueda,
@@ -104,7 +103,6 @@ class ConsaludService
 
         try {
             $response = Http::withToken($token)
-                ->withoutVerifying()
                 ->timeout(30)
                 ->get($this->baseUrl . '/historias/ingresos/historia-status', [
                     'ids' => $ingresoIds,
@@ -172,7 +170,7 @@ class ConsaludService
 
         return Cache::remember($cacheKey, 3600, function () {
             try {
-                $response = Http::withoutVerifying()
+                $response = Http::acceptJson()
                     ->timeout(15)
                     ->post($this->baseUrl . '/auth/login', [
                         'usernameOrEmail' => $this->user,

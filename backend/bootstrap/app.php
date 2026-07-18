@@ -18,9 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api', 'middleware' => ['api']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->api(prepend: [
-            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
-            \Illuminate\Session\Middleware\StartSession::class,
+        $middleware->alias([
+            'consalud.auth' => \App\Http\Middleware\AuthenticateConsalud::class,
+            'consalud.permission' => \App\Http\Middleware\RequireConsaludPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

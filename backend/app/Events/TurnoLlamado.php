@@ -23,10 +23,16 @@ class TurnoLlamado implements ShouldBroadcast
         return [
             'id' => $this->turno->id,
             'numero_turno' => $this->turno->numero_turno,
-            'nombre_paciente' => $this->turno->nombre_paciente,
+            'nombre_publico' => $this->nombrePublico(),
             'area_id' => $this->turno->area_id,
             'estado' => $this->turno->estado->value,
             'contador_llamados' => $this->turno->contador_llamados,
         ];
+    }
+
+    private function nombrePublico(): string
+    {
+        $partes = preg_split('/\s+/', trim($this->turno->nombre_paciente)) ?: [];
+        return trim(($partes[0] ?? '') . ' ' . ($partes[2] ?? $partes[1] ?? ''));
     }
 }

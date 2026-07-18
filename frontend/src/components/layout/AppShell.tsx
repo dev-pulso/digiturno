@@ -1,10 +1,10 @@
-import { Outlet } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { AccessBoundary } from '@/components/auth/access-boundary';
 
 export function AppShell() {
   return (
     <>
-      <Outlet />
+      <AccessBoundary />
       <Toaster
         position="bottom-right"
         theme="system"

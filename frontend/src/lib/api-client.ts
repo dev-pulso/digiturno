@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getAccessToken, requestAuthentication } from './embedded-auth';
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -6,9 +7,17 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('ips-token');
+  const token = getAccessToken();
   if (token) {
-    config.headers['X-Consalud-Token'] = token;
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) requestAuthentication();
+    return Promise.reject(error);
+  },
+);

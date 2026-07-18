@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'consalud' => [
+        'url' => rtrim((string) env('CONSALUD_URL', env('API_URL_CONSALUD', '')), '/'),
+        'identity_provider' => env('IDENTITY_PROVIDER', 'consalud'),
+        'connect_timeout' => (int) env('CONSALUD_CONNECT_TIMEOUT', 3),
+        'timeout' => (int) env('CONSALUD_TIMEOUT', 5),
+        'identity_cache_seconds' => (int) env('CONSALUD_IDENTITY_CACHE_SECONDS', 30),
+        'api_user' => env('CONSALUD_API_USER'),
+        'api_password' => env('CONSALUD_API_PASSWORD'),
+    ],
+
 ];

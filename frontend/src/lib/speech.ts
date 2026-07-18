@@ -1,13 +1,13 @@
 type DatosAnuncio = {
   numero_turno?: string | number;
-  nombre_paciente?: string;
+  nombre_publico?: string;
   area_nombre?: string;
   prefijo?: string;
 };
 
 function buildText(data: DatosAnuncio): string {
   const partes: string[] = [];
-  if (data.nombre_paciente) partes.push(data.nombre_paciente);
+  if (data.nombre_publico) partes.push(data.nombre_publico);
   if (data.area_nombre) partes.push(data.area_nombre);
   return partes.join(', ');
 }

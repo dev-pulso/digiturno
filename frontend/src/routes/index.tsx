@@ -8,6 +8,7 @@ import { AdminAreasPage } from '@/features/admin/pages/AdminAreasPage';
 import { AdminTiposExamenesPage } from '@/features/admin/pages/AdminTiposExamenesPage';
 import { AdminVideosPage } from '@/features/admin/pages/AdminVideosPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
+import { ConsaludHostPage } from '@/features/dev/pages/ConsaludHostPage';
 import { AppShell } from '@/components/layout/AppShell';
 
 export const router = createBrowserRouter([
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'admin/examenes', element: <AdminTiposExamenesPage /> },
       { path: 'admin/videos', element: <AdminVideosPage /> },
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'dev/consalud-host', element: <ConsaludHostPage /> },
     ],
   },
 ]);

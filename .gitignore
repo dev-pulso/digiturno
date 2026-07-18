@@ -7,6 +7,7 @@
 /backend/storage/framework/sessions/
 /backend/storage/framework/views/
 /backend/.env
+/backend/.env.reverb
 /backend/.env.backup
 /backend/.phpunit.result.cache
 

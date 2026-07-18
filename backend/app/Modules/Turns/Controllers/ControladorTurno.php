@@ -20,6 +20,7 @@ use App\Services\ServicioExamenesPacientes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 
 class ControladorTurno extends Controller
 {
@@ -32,6 +33,11 @@ class ControladorTurno extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Turno::with('area', 'examenPaciente.tipoExamen');
+        $areaCodes = $request->attributes->get('consalud.identity')['area_codes'] ?? [];
+
+        if (!in_array('*', $areaCodes, true)) {
+            $query->whereHas('area', fn ($area) => $area->whereIn('codigo', $areaCodes));
+        }
 
         if ($request->has('area_id')) {
             $query->where('area_id', $request->area_id);
@@ -55,23 +61,30 @@ class ControladorTurno extends Controller
     public function store(CrearTurnoRequest $request): JsonResponse
     {
         $area = Area::findOrFail($request->area_id);
-        $numeroTurno = $this->generadorNumero->generar($area);
-
-        $turno = Turno::create([
-            'numero_turno' => $numeroTurno,
+        $areaCodes = $request->attributes->get('consalud.identity')['area_codes'] ?? [];
+        abort_unless(in_array('*', $areaCodes, true) || in_array($area->codigo, $areaCodes, true), 403);
+        $turno = DB::transaction(function () use ($area, $request) {
+            $numero = $this->generadorNumero->generar($area);
+            $turno = Turno::create([
+            'numero_turno' => $numero['numero_turno'],
+            'fecha_turno' => $numero['fecha_turno'],
+            'consecutivo_diario' => $numero['consecutivo_diario'],
             'area_id' => $area->id,
             'paciente_id' => $request->paciente_id,
             'examen_paciente_id' => $request->examen_paciente_id,
             'nombre_paciente' => $request->nombre_paciente,
             'estado' => EstadoTurno::EnEspera,
             'origen' => OrigenTurno::tryFrom($request->origen ?? 'recepcion') ?? OrigenTurno::Recepcion,
-        ]);
+            ]);
 
-        TurnoLog::create([
+            TurnoLog::create([
             'turno_id' => $turno->id,
             'accion' => 'creado',
             'estado_nuevo' => EstadoTurno::EnEspera->value,
-        ]);
+            ]);
+
+            return $turno;
+        }, 3);
 
         $turno->load('area');
 
@@ -164,8 +177,8 @@ class ControladorTurno extends Controller
             ->count();
 
         return response()->json([
-            'actual' => $actual ? new TurnoResource($actual) : null,
-            'historial' => TurnoResource::collection($historial),
+            'actual' => $actual ? $this->publicTurno($actual) : null,
+            'historial' => $historial->map(fn (Turno $turno) => $this->publicTurno($turno)),
             'en_espera' => $enEspera,
         ]);
     }
@@ -203,12 +216,30 @@ class ControladorTurno extends Controller
                 'nombre' => $area->nombre,
                 'prefijo' => $area->prefijo,
                 'color' => $area->color,
-                'actual' => $actual ? new TurnoResource($actual) : null,
+                'actual' => $actual ? $this->publicTurno($actual) : null,
                 'en_espera' => $enEspera,
-                'historial' => TurnoResource::collection($historial),
+                'historial' => $historial->map(fn (Turno $turno) => $this->publicTurno($turno)),
             ];
         });
 
         return response()->json(['areas' => $resultado]);
+    }
+
+    private function publicTurno(Turno $turno): array
+    {
+        return [
+            'numero_turno' => $turno->numero_turno,
+            'nombre_publico' => $this->nombrePublico($turno->nombre_paciente),
+            'estado' => $turno->estado->value,
+            'contador_llamados' => $turno->contador_llamados,
+            'llamado_en' => $turno->llamado_en,
+            'completado_en' => $turno->completado_en,
+        ];
+    }
+
+    private function nombrePublico(string $nombre): string
+    {
+        $partes = preg_split('/\s+/', trim($nombre)) ?: [];
+        return trim(($partes[0] ?? '') . ' ' . ($partes[2] ?? $partes[1] ?? ''));
     }
 }
