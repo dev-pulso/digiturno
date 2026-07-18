@@ -64,9 +64,12 @@ class ServicioExamenesPacientes
             return null;
         }
 
+        $this->limpiarTurnosViejos($areasPendientes->pluck('id')->toArray());
+
         $areaElegida = $areasPendientes
             ->sortBy(fn(Area $a) => Turno::where('area_id', $a->id)
                 ->where('estado', EstadoTurno::EnEspera)
+                ->whereDate('created_at', today())
                 ->count()
             )
             ->first();
@@ -119,5 +122,30 @@ class ServicioExamenesPacientes
         if ($turno->paciente_id) {
             $this->autoEncolarPaciente($turno->paciente_id);
         }
+    }
+
+    private function limpiarTurnosViejos(array $areaIds): void
+    {
+        $turnosCancelar = Turno::whereIn('area_id', $areaIds)
+            ->where('estado', EstadoTurno::EnEspera)
+            ->whereDate('created_at', '<', today())
+            ->get();
+
+        foreach ($turnosCancelar as $turno) {
+            $turno->update(['estado' => EstadoTurno::Cancelado]);
+            if ($turno->examen_paciente_id) {
+                ExamenPaciente::where('id', $turno->examen_paciente_id)
+                    ->where('estado', EstadoExamenPaciente::EnCola)
+                    ->update(['estado' => EstadoExamenPaciente::Pendiente, 'turno_id' => null]);
+            }
+        }
+
+        Turno::whereIn('area_id', $areaIds)
+            ->where('estado', EstadoTurno::Llamando)
+            ->whereDate('created_at', '<', today())
+            ->update([
+                'estado' => EstadoTurno::Completado,
+                'completado_en' => now(),
+            ]);
     }
 }

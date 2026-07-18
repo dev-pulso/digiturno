@@ -5,9 +5,9 @@ import Pusher from 'pusher-js';
 
 const echo = new Echo({
   broadcaster: 'reverb',
-  key: '6yz4asovj9ziqpsxwj32',
-  wsHost: 'localhost',
-  wsPort: 8081,
+  key: import.meta.env.VITE_REVERB_APP_KEY ?? 'digiturno-key',
+  wsHost: import.meta.env.VITE_REVERB_HOST ?? 'localhost',
+  wsPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8081),
   wssPort: 443,
   forceTLS: false,
   enabledTransports: ['ws', 'wss'],

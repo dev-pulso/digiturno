@@ -33,6 +33,12 @@ export function useConsultorio(areaId: number | null) {
     return res.data.data || res.data;
   };
 
+  const llamarTurno = async (turnoId: number): Promise<Turno> => {
+    const res = await api.post(`/turnos/${turnoId}/llamar`);
+    await fetchCola();
+    return res.data.data || res.data;
+  };
+
   const completarTurno = async (turnoId: number): Promise<Turno> => {
     const res = await api.post(`/turnos/${turnoId}/completar`);
     await Promise.all([fetchCola(), fetchHistorial()]);
@@ -59,6 +65,7 @@ export function useConsultorio(areaId: number | null) {
     fetchCola,
     fetchHistorial,
     llamarSiguiente,
+    llamarTurno,
     completarTurno,
     ausenteTurno,
     rellamarTurno,

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Turns\Resources;
 
+use App\Models\Turno;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -43,6 +44,14 @@ class TurnoResource extends JsonResource
                     'codigo' => $this->examenPaciente->tipoExamen->codigo,
                 ]),
             ]),
+            'ocupado_en' => $this->when(
+                $this->paciente_id && ($ocupado = Turno::turnoEnAtencionDePaciente($this->paciente_id, $this->id)),
+                fn() => [
+                    'id' => $ocupado->area->id,
+                    'nombre' => $ocupado->area->nombre,
+                    'prefijo' => $ocupado->area->prefijo,
+                ]
+            ),
         ];
     }
 }

@@ -1,10 +1,23 @@
 <!doctype html>
-<html lang="es" class="dark">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>Digiturno | Consalud Laboral</title>
+    <script>
+      (function () {
+        const key = 'digiturno-theme';
+        const stored = localStorage.getItem(key);
+        let resolved = 'light';
+        if (stored === 'dark') resolved = 'dark';
+        else if (stored === 'system') {
+          resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.classList.remove('light', 'dark');
+        document.documentElement.classList.add(resolved);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

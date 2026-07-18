@@ -146,6 +146,7 @@ class ControladorTurno extends Controller
         $actual = Turno::with('area', 'examenPaciente.tipoExamen')
             ->where('area_id', $area->id)
             ->where('estado', EstadoTurno::Llamando)
+            ->whereDate('created_at', today())
             ->latest('llamado_en')
             ->first();
 
@@ -159,6 +160,7 @@ class ControladorTurno extends Controller
 
         $enEspera = Turno::where('area_id', $area->id)
             ->where('estado', EstadoTurno::EnEspera)
+            ->whereDate('created_at', today())
             ->count();
 
         return response()->json([
@@ -178,6 +180,7 @@ class ControladorTurno extends Controller
             $actual = Turno::with('examenPaciente.tipoExamen')
                 ->where('area_id', $area->id)
                 ->where('estado', EstadoTurno::Llamando)
+                ->whereDate('created_at', today())
                 ->latest('llamado_en')
                 ->first();
 
@@ -191,6 +194,7 @@ class ControladorTurno extends Controller
 
             $enEspera = Turno::where('area_id', $area->id)
                 ->where('estado', EstadoTurno::EnEspera)
+                ->whereDate('created_at', today())
                 ->count();
 
             return [

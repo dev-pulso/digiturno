@@ -13,7 +13,6 @@ class GeneradorNumeroTurno
 
         $ultimoTurno = DB::table('turnos')
             ->where('area_id', $area->id)
-            ->whereDate('created_at', today())
             ->orderBy('id', 'desc')
             ->lockForUpdate()
             ->first();

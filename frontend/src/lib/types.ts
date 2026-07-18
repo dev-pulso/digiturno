@@ -44,6 +44,7 @@ export interface Turno {
     estado: string;
     tipo_examen?: { id: number; nombre: string; codigo: string };
   };
+  ocupado_en?: { id: number; nombre: string; prefijo: string } | null;
   created_at: string;
 }
 

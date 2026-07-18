@@ -12,4 +12,5 @@ Route::prefix('v1')->group(function () {
     require base_path('app/Modules/Display/routes.php');
     require base_path('app/Modules/Admin/routes.php');
     require base_path('app/Modules/Dashboard/routes.php');
+    require base_path('app/Modules/Consalud/routes.php');
 });

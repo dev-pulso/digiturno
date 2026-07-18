@@ -1,0 +1,490 @@
+<cem-panel [hoverable]="true" size="xl" align="left" panelAlign="right" [showHeader]="true"
+    [headerLayout]="'horizontal'" title="Consulta de Ingresos" [iconOffsetTop]="'0.35rem'"
+    [showHeaderButton]="crearIngresos" [headerButtonTitle]="'Nuevo Ingreso'" [headerButtonIcon]="'plus'"
+    [headerButtonColor]="'success'" [headerButtonSize]="'sm'" [headerButtonVariant]="'rounded'"
+    (headerButtonClick)="onCrearIngreso()">
+
+    <ng-container slot="icon">
+        <cem-icon-simple icon="team" size="lg" color="primary" hoverColor="warning">
+        </cem-icon-simple>
+    </ng-container>
+
+    <!-- Filtros inline -->
+    <div class="filter-row">
+        <!-- Rango de Fechas -->
+        <div class="filter-item">
+            <label>Rango de Fechas</label>
+            <nz-range-picker [(ngModel)]="rangoFechas" name="rangoFechas" nzAllowClear nzShowTime
+                nzFormat="yyyy-MM-dd HH:mm:ss" (ngModelChange)="onRangoCambio($event)">
+            </nz-range-picker>
+        </div>
+
+        <!-- Cliente -->
+        <div class="filter-item">
+            <label>Cliente</label>
+            <nz-select nzAllowClear nzShowSearch nzPlaceHolder="Seleccione cliente" [(ngModel)]="cliente_id"
+                name="cliente_id" (ngModelChange)="onClienteChange($event)">
+                <nz-option *ngFor="let c of clientes" [nzLabel]="c.razon_social" [nzValue]="c.id"></nz-option>
+            </nz-select>
+        </div>
+
+        <!-- Empresa en Labor -->
+        <div class="filter-item" *ngIf="cliente_id && empresasLabor && empresasLabor.length > 0">
+            <label>Proyecto</label>
+            <nz-select nzAllowClear nzShowSearch nzPlaceHolder="Seleccione Proyecto"
+                [(ngModel)]="empresa_labor_id" name="empresa_labor_id" (ngModelChange)="applyFilters()">
+                <nz-option *ngFor="let e of empresasLabor" [nzLabel]="e.nombre" [nzValue]="e.id"></nz-option>
+            </nz-select>
+        </div>
+
+        <!-- Estado -->
+        <div class="filter-item">
+            <label>Estado</label>
+            <nz-select nzAllowClear nzShowSearch nzPlaceHolder="Seleccione estado" [(ngModel)]="estado"
+                name="estado_id" (ngModelChange)="onEstadoChange($event)">
+                <nz-option [nzLabel]="'Ingresado'" [nzValue]="1"></nz-option>
+                <nz-option [nzLabel]="'Inactivo'" [nzValue]="0"></nz-option>
+            </nz-select>
+        </div>
+
+        <!-- Examen (solo Admin) -->
+        <div class="filter-item" *ngIf="isAdmin">
+            <label>Examen</label>
+            <nz-select nzAllowClear nzShowSearch nzPlaceHolder="Seleccione examen" [(ngModel)]="examen_id"
+                name="examen_id" [nzOptions]="catalogoExamenes" (ngModelChange)="applyFilters()">
+            </nz-select>
+        </div>
+
+        <!-- Salto de fila -->
+        <div class="filter-row-break"></div>
+
+        <!-- Lugar de Atención -->
+        <div class="filter-item" *ngIf="lugaresAtencionOriginal && lugaresAtencionOriginal.length > 0">
+            <label>Lugar de Atención</label>
+            <nz-select nzAllowClear nzShowSearch nzPlaceHolder="Seleccione lugar"
+                [(ngModel)]="lugar_atencion_id" name="lugar_atencion_id" (ngModelChange)="applyFilters()">
+                <nz-option *ngFor="let l of lugaresAtencion" [nzLabel]="l.nombre" [nzValue]="l.id"></nz-option>
+            </nz-select>
+        </div>
+
+        <!-- Búsqueda por identificación o ID -->
+        <div class="filter-item">
+            <label>Identificación / No. Ingreso</label>
+            <nz-input-group [nzSuffix]="busqueda ? limpiarBusquedaTpl : undefined">
+                <input nz-input placeholder="Ej: 1234567 ó 000012" [(ngModel)]="busqueda" name="busqueda"
+                    (keyup.enter)="onBuscar()" />
+            </nz-input-group>
+            <ng-template #limpiarBusquedaTpl>
+                <span nz-icon nzType="close-circle" nzTheme="fill" style="cursor:pointer; color: #aaa;"
+                    (click)="busqueda = ''"></span>
+            </ng-template>
+        </div>
+
+        <!-- Buscar -->
+        <div class="filter-item filter-item--buscar">
+            <label>&nbsp;</label>
+            <cem-button [color]="'primary'" [size]="'sm'" [variant]="'rounded'" [icon]="'search'"
+                [loading]="_isLoading" [disabled]="!busqueda.trim() && !examen_id && (!rangoFechas || rangoFechas.length !== 2)"
+                (clicked)="onBuscar()">
+                Buscar
+            </cem-button>
+        </div>
+    </div>
+
+    <cem-table [columns]="columnas" [data]="ingresosFiltrados" [emptyText]="'No hay ingresos registrados'"
+        [totalRow]="totalRow" [headerColor]="'primary'" [headerColored]="true" [showFooter]="true"
+        [responsiveSize]="true" [maxHeight]="'700px'" [cellSize]="'md'" [bordered]="true"
+        (actionClick)="onAccionEjecutada($event)" [showPagination]="true" [paginationSize]="'auto'"
+        [paginationAlign]="'right'" [paginationPosition]="'bottom'" [enableSearch]="true"
+        [searchPlaceholder]="'Buscar por cliente, paciente...'" [loading]="_isLoading"
+        [visibleColumnKeys]="visibleColumnKeys" (visibleColumnKeysChange)="visibleColumnKeys = $event"
+        [enableColumnSelector]="true" [tableId]="'table-ingresos'" [showRefreshIcon]="true"
+        [showExcelExportIcon]="false" [showPdfExportIcon]="false" (refreshClicked)="onRefresh()"
+        [loadingRefresh]="isRefreshing" [searchableFields]="['id', 'cliente.razon_social',  'paciente.primer_nombre', 'paciente.segundo_nombre', 
+        'paciente.primer_apellido', 'paciente.segundo_apellido','pacienteNombreCompleto', 'paciente.ocupacion.nombre',
+        'empresa_labor.nombre','lugar_atencion.nombre']" [showExcelExportIcon]="true"
+        (exportExcelClicked)="onExportExcel()" [loadingExportExcel]="isExportingExcel">
+    </cem-table>
+</cem-panel>
+
+<!-- Templates columnas -->
+
+<!-- Cliente -->
+<ng-template #clienteTpl let-row>
+    <strong>{{ row.cliente?.razon_social || row.cliente?.nombre || '—' }}</strong>
+    <div class="ips-cell__subcontent" *ngIf="row.cliente">
+        <ng-container *ngIf="row.sede?.nombre_sede">
+            • SEDE: {{ row.sede?.nombre_sede }}
+        </ng-container>
+
+        <ng-container *ngIf="row.empresa_labor?.nombre">
+            <br>• EN LABOR: {{ row.empresa_labor?.nombre }}
+        </ng-container>
+    </div>
+</ng-template>
+
+<!-- Paciente -->
+<ng-template #pacienteTpl let-row>
+    <strong>{{ row.pacienteNombreCompleto || '—' }}</strong>
+    <div class="ips-cell__subcontent" *ngIf="row.paciente">
+        <ng-container *ngIf="row.paciente.identificacion">
+            • Doc: {{ row.paciente.identificacion }}
+        </ng-container>
+
+        <ng-container *ngIf="row.paciente?.celular">
+            <br>• Celular: {{ row.paciente.celular }}
+        </ng-container>
+
+        <ng-container *ngIf="row.paciente?.ocupacion?.nombre">
+            <br>• Ocupación: {{ row.paciente.ocupacion.nombre }}
+        </ng-container>
+    </div>
+</ng-template>
+
+<!-- Fecha -->
+<ng-template #fechaTpl let-row>
+    {{ row.fecha_atencion | date: 'yyyy-MM-dd hh:mm a' }}
+</ng-template>
+
+<!-- Ingreso (ID + fecha atención) -->
+<ng-template #ingresoTpl let-row>
+    <strong>
+        {{ row.id ? row.id.toString().padStart(6, '0') : '—' }}
+    </strong>
+    <br />
+    <ng-container *ngIf="row.fecha_atencion">
+        {{ row.fecha_atencion | date: 'yyyy-MM-dd hh:mm a' }}
+    </ng-container>
+</ng-template>
+
+
+<!-- Estado -->
+<ng-template #estadoTpl let-row>
+    <ng-container *ngIf="row?.estado !== null && row?.estado !== undefined; else noEstado">
+
+        <nz-tag class="pill" [nzColor]="
+            row.estado === 1 ? '#198754'  
+            : '#dc3545'                   
+        ">
+            {{
+            row.estado === 1 ? 'Ingresado'
+            : 'Inactivo'
+            }}
+        </nz-tag>
+
+    </ng-container>
+
+    <ng-template #noEstado>—</ng-template>
+</ng-template>
+
+<!-- Acciones -->
+<ng-template #accionesTpl let-row>
+    <div class="acciones-botones">
+        <!-- Editar -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Editar ingreso" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'editar', row: row })"
+            *ngIf="row.estado !== 0 && editarIngresos">
+            <cem-icon-simple [icon]="'edit'" size="sm" [color]="'primary'" [hoverColor]="'primary'"></cem-icon-simple>
+        </cem-button>
+
+        <!-- PDF -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Ver PDF" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'ver_pdf', row: row })">
+            <cem-icon-simple [icon]="'file-pdf'" size="sm" [color]="'danger'" [hoverColor]="'danger'"></cem-icon-simple>
+        </cem-button>
+
+        <!-- Historia Clínica -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Historia Clínica" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'historia', row: row })"
+            *ngIf="puedeVerHistoriaClinica">
+            <cem-icon-simple [icon]="'file-text'" size="sm" [color]="'warning'" [hoverColor]="'warning'">
+            </cem-icon-simple>
+        </cem-button>
+
+        <!-- Certificados -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Certificados" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'subir_certificados', row: row })">
+            <cem-icon-simple [icon]="'upload'" size="sm" [color]="'success'" [hoverColor]="'success'">
+            </cem-icon-simple>
+        </cem-button>
+
+        <!-- Generar Concepto -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Generar Concepto" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'generar_concepto', row: row })"
+            [loading]="isPrintingConcepto(row.id)" *ngIf="puedeGenerarConcepto">
+            <cem-icon-simple [icon]="'audit'" size="sm" [color]="'info'" [hoverColor]="'info'">
+            </cem-icon-simple>
+        </cem-button>
+
+        <!-- Generar Historia en PDF -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Generar Historia en PDF" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'generar_historia', row: row })"
+            [loading]="isPrintingHistoria(row.id)" *ngIf="puedeGenerarHistoriaPdf">
+            <cem-icon-simple [icon]="'medicine-box'" size="sm" [color]="'purple'" [hoverColor]="'purple'">
+            </cem-icon-simple>
+        </cem-button>
+
+        <!-- Modificar Fecha -->
+        <ng-container *ngIf="modificarFechaIngresos">
+            <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Modificar Fecha" [size]="'sm'"
+                [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'modificar_fecha', row: row })">
+                <cem-icon-simple [icon]="'calendar'" size="sm" [color]="'warning'"
+                    [hoverColor]="'warning'"></cem-icon-simple>
+            </cem-button>
+        </ng-container>
+
+        <!-- Eliminar -->
+        <cem-button class="cem-btn-action" nz-button nzType="text" nz-tooltip="Eliminar" [size]="'sm'"
+            [variant]="'rounded'" (click)="onAccionEjecutada({ action: 'eliminar', row: row })"
+            *ngIf="row.estado === 1 && eliminarIngresos">
+            <cem-icon-simple [icon]="'delete'" size="sm" [color]="'danger'" [hoverColor]="'danger'">
+            </cem-icon-simple>
+        </cem-button>
+    </div>
+</ng-template>
+
+<!-- Lista de exámenes para columna en tabla principal -->
+<ng-template #examenesListaTpl let-row>
+    <ng-container *ngIf="row.examenes?.length; else sinExamenesCol">
+        <div class="examen-lista-item"
+             [class.examen-completo]="isExamenCompleto(row.id, ex.examen_id, ex.examen?.categoria_exam_id)"
+             [class.examen-cerrado]="isExamenCerrado(row.id, ex.examen_id, ex.examen?.categoria_exam_id)"
+             *ngFor="let ex of row.examenes">
+            <ng-container *ngIf="puedeGestionarHistoria && ex.examen?.categoria_exam_id; else examenTexto">
+                <button class="examen-btn"
+                        [class.examen-btn--completo]="isExamenCompleto(row.id, ex.examen_id, ex.examen?.categoria_exam_id)"
+                        [class.examen-btn--cerrado]="isExamenCerrado(row.id, ex.examen_id, ex.examen?.categoria_exam_id)"
+                        nz-tooltip [nzTooltipTitle]="isExamenCerrado(row.id, ex.examen_id, ex.examen?.categoria_exam_id) ? 'Historia cerrada — clic para abrir' : 'Ver historial / Cerrar-Abrir'"
+                        (click)="onExamenClick(row, ex)">
+                    <span class="examen-check" *ngIf="isExamenCompleto(row.id, ex.examen_id, ex.examen?.categoria_exam_id)">✓</span>
+                    <span nz-icon nzType="lock" nzTheme="fill" class="examen-lock-icon"
+                          *ngIf="isExamenCerrado(row.id, ex.examen_id, ex.examen?.categoria_exam_id)"></span>
+                    {{ ex.examen?.cdg_examen || '—' }} - {{ ex.examen?.nbr_examen || 'Sin nombre' }}
+                    (CUPS: {{ ex.examen?.conv_cups?.cups ?? 0 }})
+                </button>
+            </ng-container>
+            <ng-template #examenTexto>
+                <span class="examen-check" *ngIf="isExamenCompleto(row.id, ex.examen_id, ex.examen?.categoria_exam_id)">✓</span>
+                <span nz-icon nzType="lock" nzTheme="fill" class="examen-lock-icon"
+                      *ngIf="isExamenCerrado(row.id, ex.examen_id, ex.examen?.categoria_exam_id)"></span>
+                {{ ex.examen?.cdg_examen || '—' }} - {{ ex.examen?.nbr_examen || 'Sin nombre' }}
+                (CUPS: {{ ex.examen?.conv_cups?.cups ?? 0 }})
+            </ng-template>
+        </div>
+    </ng-container>
+    <ng-template #sinExamenesCol>—</ng-template>
+</ng-template>
+
+<!-- ==========================================
+     Modal historial cerrar / abrir historia
+     ========================================== -->
+<nz-modal
+    [(nzVisible)]="historialModal.visible"
+    [nzTitle]="historialModal.titulo"
+    [nzFooter]="null"
+    nzWidth="700px"
+    (nzOnCancel)="cerrarModalHistorial()">
+
+    <ng-container *nzModalContent>
+        <!-- Tabla de historial -->
+        <nz-spin [nzSpinning]="historialModal.cargando">
+            <nz-table
+                #historialTable
+                [nzData]="historialItems"
+                nzSize="small"
+                [nzShowPagination]="false"
+                [nzNoResult]="'Sin registros previos'">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Proceso</th>
+                        <th>Fecha</th>
+                        <th>Profesional</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let item of historialTable.data; let i = index">
+                        <td>{{ i + 1 }}</td>
+                        <td>
+                            <nz-tag [nzColor]="item.proceso === 'CERRAR' ? 'red' : 'green'">
+                                {{ item.proceso ?? '—' }}
+                            </nz-tag>
+                        </td>
+                        <td>{{ item.created_at | date: 'yyyy-MM-dd hh:mm:ss a' }}</td>
+                        <td>{{ item.profesional }}</td>
+                        <td>{{ item.descripcion ?? '—' }}</td>
+                    </tr>
+                </tbody>
+            </nz-table>
+        </nz-spin>
+
+        <!-- Motivo de apertura (solo cuando la sección está cerrada) -->
+        <div class="historial-motivo" *ngIf="historialSeccionCerrada">
+            <label>Motivo de Apertura de la Historia Clínica</label>
+            <textarea nz-input [(ngModel)]="historialMotivo" [nzAutosize]="{ minRows: 3, maxRows: 6 }"
+                placeholder="Ingrese el motivo...">
+            </textarea>
+        </div>
+
+        <!-- Botón acción -->
+        <div class="historial-footer">
+            <cem-button
+                [color]="historialSeccionCerrada ? 'success' : 'danger'"
+                [size]="'md'"
+                [variant]="'rounded'"
+                [icon]="historialSeccionCerrada ? 'unlock' : 'lock'"
+                [loading]="historialModal.guardando"
+                style="min-width: 180px;"
+                (clicked)="onGuardarEstadoSeccion()">
+                {{ historialSeccionCerrada ? 'Abrir Historia' : 'Cerrar Historia' }}
+            </cem-button>
+        </div>
+    </ng-container>
+</nz-modal>
+
+<!-- ==========================================
+     Templates para la tabla de certificados
+     ========================================== -->
+
+<!-- Archivo (descarga o "Sin archivo") -->
+<ng-template #archivoCertTpl let-data>
+    <ng-container *ngIf="data?.id != null && data?.archivo; else certNoLink">
+        <a [href]="data.ruta" target="_blank" rel="noopener noreferrer" download
+            nz-button nzType="primary" nzSize="small">
+            <i nz-icon nzType="download" nzTheme="outline"></i>
+            Descargar
+        </a>
+    </ng-container>
+    <ng-template #certNoLink>
+        <span style="color:#aaa;">
+            {{ data?.archivo || 'Sin archivo' }}
+        </span>
+    </ng-template>
+</ng-template>
+
+<!-- Acciones tabla certificados -->
+<ng-template #accionesSubirCertTpl let-row>
+    <button nz-button nzType="text" nzDanger nz-tooltip="Eliminar certificado"
+        (click)="onEliminarCertificado({ action: 'eliminar', row: row })">
+        <i nz-icon nzType="delete" nzTheme="outline"></i>
+    </button>
+</ng-template>
+
+<!-- Modal Certificados -->
+<cem-modal [visible]="certificadosModal.visible" [title]="certificadosModal.title" icon="upload" size="2xl"
+    rounded="lg" titleAlign="left" footerAlign="right" (cancel)="cerrarModalCertificados()">
+
+    <form nz-form [nzLayout]="'vertical'" [formGroup]="formSubirCertificado">
+        <nz-row [nzGutter]="16">
+
+            <nz-col [nzSpan]="12">
+                <nz-form-item>
+                    <nz-form-control>
+                        <nz-select formControlName="examen_id"
+                            [nzOptions]="examenesIngresoOpciones"
+                            nzPlaceHolder="Seleccione examen"
+                            nzShowSearch style="width: 100%;">
+                        </nz-select>
+                    </nz-form-control>
+                </nz-form-item>
+            </nz-col>
+
+            <nz-col [nzSpan]="7">
+                <nz-form-item>
+                    <nz-form-control>
+                        <nz-upload [nzBeforeUpload]="beforeUploadCertificado" [nzAccept]="tiposPermitidosCert"
+                            [nzFileList]="fileListCert">
+                            <cem-button [color]="'info'" [size]="'sm'" [variant]="'rounded'" [icon]="'upload'">
+                                Seleccionar archivo
+                            </cem-button>
+                        </nz-upload>
+                    </nz-form-control>
+                </nz-form-item>
+            </nz-col>
+
+            <nz-col [nzSpan]="5">
+                <nz-form-item>
+                    <nz-form-control>
+                        <cem-button [loading]="_isLoading" [color]="'primary'" [size]="'sm'" [variant]="'rounded'"
+                            [icon]="'save'" (clicked)="subirCertificados()">
+                            Guardar
+                        </cem-button>
+                    </nz-form-control>
+                </nz-form-item>
+            </nz-col>
+
+        </nz-row>
+    </form>
+
+    <nz-spin [nzSpinning]="certificadosModal.cargando" nzTip="Cargando certificados...">
+        <cem-table [columns]="columnasCertificados" [data]="certificadosActuales || []" [responsiveSize]="true"
+            [emptyText]="'No hay certificados registrados'" [headerColor]="'primary'" [headerColored]="true"
+            [maxHeight]="'400px'" [cellSize]="'md'" [bordered]="true" [showPagination]="false">
+        </cem-table>
+    </nz-spin>
+
+    <div modal-footer>
+        <cem-button [color]="'secondary'" [size]="'sm'" [variant]="'rounded'" (clicked)="cerrarModalCertificados()">
+            Cerrar
+        </cem-button>
+    </div>
+</cem-modal>
+
+<!-- Modal para modificar fecha de ingreso -->
+<cem-modal [visible]="modificarFechaModal.visible" [title]="modificarFechaModal.title" icon="calendar" size="md"
+    rounded="lg" titleAlign="left" footerAlign="right" (cancel)="cerrarModalModificarFecha()">
+
+    <form nz-form [nzLayout]="'vertical'" [formGroup]="formModificarFecha">
+        <nz-form-item>
+            <nz-form-label nzFor="nuevaFecha" nzRequired>Nueva Fecha de Ingreso</nz-form-label>
+            <nz-form-control nzErrorTip="Por favor seleccione una fecha">
+                <nz-date-picker id="nuevaFecha" formControlName="nuevaFecha" nzFormat="yyyy-MM-dd HH:mm:ss" nzShowTime
+                    nzPlaceHolder="Seleccione fecha y hora" style="width: 100%;">
+                </nz-date-picker>
+            </nz-form-control>
+        </nz-form-item>
+
+        <div style="margin-top: 16px; padding: 12px; background-color: #f5f5f5; border-radius: 8px;">
+            <div>
+                <strong>Ingreso:</strong>
+                <span style="margin-left: 8px;">#{{ (ingresoActual?.id || 0).toString().padStart(6, '0') }}</span>
+            </div>
+            <div style="margin-top: 8px;">
+                <strong>Fecha Actual:</strong>
+                <span style="margin-left: 8px;">{{ ingresoActual?.fecha_atencion }}</span>
+            </div>
+        </div>
+    </form>
+
+    <div modal-footer>
+        <cem-button [loading]="modificarFechaModal.cargando" [color]="'primary'" [size]="'sm'" [variant]="'rounded'"
+            [icon]="'save'" (clicked)="guardarNuevaFechaIngreso()">
+            Guardar
+        </cem-button>
+    </div>
+</cem-modal>
+
+<!-- Modal para seleccionar proveedor del PDF -->
+<cem-modal [visible]="pdfProveedorModal.visible" title="Seleccionar Proveedor" icon="file-pdf" size="lg"
+    rounded="lg" titleAlign="left" footerAlign="right" (cancel)="cerrarModalPdfProveedor()">
+
+    <p style="margin-bottom: 16px; color: #555;">Seleccione el proveedor para descargar el PDF de remisión:</p>
+
+    <nz-radio-group [(ngModel)]="pdfProveedorSeleccionado" nzName="pdfProveedor">
+        <label *ngFor="let prov of pdfProveedores" nz-radio [nzValue]="prov.id"
+            style="display: block; margin-bottom: 10px;">
+            {{ prov.nombre }}
+        </label>
+    </nz-radio-group>
+
+    <div modal-footer style="display: flex; gap: 8px;">
+        <cem-button [color]="'secondary'" [size]="'sm'" [variant]="'rounded'" (clicked)="cerrarModalPdfProveedor()">
+            Cancelar
+        </cem-button>
+        <cem-button [color]="'danger'" [size]="'sm'" [variant]="'rounded'" [icon]="'file-pdf'"
+            (clicked)="confirmarDescargarPdf()">
+            Descargar PDF
+        </cem-button>
+    </div>
+</cem-modal>

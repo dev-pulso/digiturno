@@ -7,6 +7,7 @@ use App\Models\TipoExamen;
 use App\Models\Paciente;
 use App\Models\ExamenPaciente;
 use App\Enums\EstadoExamenPaciente;
+use Database\Seeders\ConsaludCategoriasAreasSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -68,5 +69,6 @@ class DatabaseSeeder extends Seeder
                 }
             }
         }
+        $this->call(ConsaludCategoriasAreasSeeder::class);
     }
 }

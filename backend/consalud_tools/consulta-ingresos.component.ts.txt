@@ -1,0 +1,1356 @@
+import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
+import {
+    ChangeDetectorRef,
+    Component,
+    ElementRef,
+    OnDestroy,
+    OnInit,
+    TemplateRef,
+    ViewChild,
+} from '@angular/core';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+
+import { CemButtonComponent } from '@components/button';
+import { CemIconSimpleComponent } from '@components/icon-simple';
+import { CemPanelComponent } from '@components/panel';
+import { CemTableComponent } from '@components/table';
+import { CemToastService } from '@components/toast';
+
+import { NzButtonModule } from 'ng-zorro-antd/button';
+import { NzDatePickerModule } from 'ng-zorro-antd/date-picker';
+import { NzIconModule } from 'ng-zorro-antd/icon';
+import { NzInputModule } from 'ng-zorro-antd/input';
+import { NzSelectModule } from 'ng-zorro-antd/select';
+import { NzSpinModule } from 'ng-zorro-antd/spin';
+import { NzToolTipModule } from 'ng-zorro-antd/tooltip';
+import { NzTagModule } from 'ng-zorro-antd/tag';
+import { NzModalService } from 'ng-zorro-antd/modal';
+import { NzFormModule } from 'ng-zorro-antd/form';
+import { NzGridModule } from 'ng-zorro-antd/grid';
+import { NzUploadFile, NzUploadModule } from 'ng-zorro-antd/upload';
+import { NzModalModule } from 'ng-zorro-antd/modal';
+import { NzTableModule } from 'ng-zorro-antd/table';
+import { NzRadioModule } from 'ng-zorro-antd/radio';
+
+import { firstValueFrom, Subject, takeUntil } from 'rxjs';
+
+import { FetchIngresosService } from '@modules/historias/ingresos/application/services/fetch-ingresos.service';
+import { FetchIngresosServiceImpl } from '@modules/historias/ingresos/infrastructure/services/fetch-ingresos.service.impl';
+import { FetchIngresosController } from '../../../controllers/fetch-ingresos.controller';
+import {
+    CertificadoIngreso,
+    HistoriaStatusMap,
+    Ingreso,
+    SeccionEstadoHistorialItem,
+} from '@modules/historias/ingresos/application/models';
+import { Cliente } from '@modules/gen/clientes/application/models';
+import { Municipio } from '@common/application/models';
+import { SessionStore } from '@stores/session';
+import { HISTORIAS_AUTHORITIES } from '@authorities/historias';
+import { ADMIN_AUTHORITY } from '@authorities/principal';
+import { CemModalComponent } from '@components/modal';
+import { ExcelService } from '@common/application/services/excel.service';
+import { environment } from '@environments/environment';
+import { HISTORIAS_END_POINTS } from '@modules/historias/historias.end-points';
+
+@Component({
+    selector: 'app-consulta-ingresos',
+    imports: [
+        CommonModule,
+        FormsModule,
+        ReactiveFormsModule,
+        CemPanelComponent,
+        CemTableComponent,
+        CemIconSimpleComponent,
+        CemButtonComponent,
+        NzButtonModule,
+        NzDatePickerModule,
+        NzIconModule,
+        NzInputModule,
+        NzSelectModule,
+        NzSpinModule,
+        NzToolTipModule,
+        NzTagModule,
+        NzFormModule,
+        NzGridModule,
+        NzUploadModule,
+        NzModalModule,
+        NzTableModule,
+        NzRadioModule,
+        CemModalComponent,
+    ],
+    providers: [
+        { provide: FetchIngresosService, useClass: FetchIngresosServiceImpl },
+        FetchIngresosController,
+    ],
+    templateUrl: './consulta-ingresos.component.html',
+    styleUrls: ['./consulta-ingresos.component.scss'],
+})
+export class ConsultaIngresosComponent implements OnInit, OnDestroy {
+    // templates de la tabla
+    @ViewChild('clienteTpl', { static: true }) clienteTpl!: TemplateRef<any>;
+    @ViewChild('pacienteTpl', { static: true }) pacienteTpl!: TemplateRef<any>;
+    @ViewChild('fechaTpl', { static: true }) fechaTpl!: TemplateRef<any>;
+    @ViewChild('estadoTpl', { static: true }) estadoTpl!: TemplateRef<any>;
+    @ViewChild('accionesTpl', { static: true }) accionesTpl!: TemplateRef<any>;
+    @ViewChild('ingresoTpl', { static: true }) ingresoTpl!: TemplateRef<any>;
+    @ViewChild('examenesListaTpl', { static: true }) examenesListaTpl!: TemplateRef<any>;
+
+    // templates modal certificados
+    @ViewChild('archivoCertTpl', { static: true }) archivoCertTpl!: TemplateRef<any>;
+    @ViewChild('accionesSubirCertTpl', { static: true }) accionesSubirCertTpl!: TemplateRef<any>;
+
+    columnas: any[] = [];
+    visibleColumnKeys: string[] = [];
+
+    ingresosStored: (Ingreso & { pacienteNombreCompleto?: string })[] = [];
+    ingresosFiltrados: (Ingreso & { pacienteNombreCompleto?: string })[] = [];
+
+    totalRow: Record<string, any> = {};
+
+    // Modal certificados
+    certificadosModal = {
+        visible: false,
+        title: 'Certificados',
+        cargando: false,
+    };
+
+    formSubirCertificado!: FormGroup;
+    columnasCertificados: any[] = [];
+    certificadosActuales: CertificadoIngreso[] = [];
+    examenesIngresoOpciones: { label: string; value: number; _examen: any }[] = [];
+    fileListCert: NzUploadFile[] = [];
+    tiposPermitidosCert = '.pdf,.jpg,.jpeg,.png';
+
+    ingresoActual: Ingreso | null = null;
+
+    // Modal modificar fecha
+    modificarFechaModal = {
+        visible: false,
+        title: 'Modificar Fecha de Ingreso',
+        cargando: false,
+    };
+    formModificarFecha!: FormGroup;
+
+    // Modal seleccionar proveedor para PDF
+    pdfProveedorModal = { visible: false, cargando: false };
+    pdfProveedores: { id: number | null; nombre: string }[] = [];
+    pdfProveedorSeleccionado: number | null = null;
+    private _ingresoParaPdf: Ingreso | null = null;
+
+    historiaStatusMap: HistoriaStatusMap = {};
+
+    _isLoading = false;
+    isRefreshing = false;
+
+    rangoFechas: Date[] = [new Date(), new Date()];
+    cliente_id: number | null = null;
+    clientes: Cliente[] = [];
+    lugaresAtencion: Municipio[] = [];
+    lugaresAtencionOriginal: Municipio[] = [];
+    lugar_atencion_id?: number;
+    estado: number | undefined = 1;
+    busqueda = '';
+    empresasLabor: any[] = [];
+    empresa_labor_id: number | null = null;
+
+    private _unsubscribe$ = new Subject<void>();
+    verIngresos = false;
+    crearIngresos = false;
+    editarIngresos = false;
+    eliminarIngresos = false;
+    modificarFechaIngresos = false;
+    isExportingExcel = false;
+
+    isAdmin = false;
+    examen_id?: number;
+    catalogoExamenes: { label: string; value: number }[] = [];
+
+    puedeGestionarHistoria = false;
+    puedeVerHistoriaClinica = false;
+    puedeGenerarConcepto = false;
+    puedeGenerarHistoriaPdf = false;
+    private _userId: number | null = null;
+
+    // Modal historial cerrar/abrir
+    historialModal = {
+        visible: false,
+        cargando: false,
+        guardando: false,
+        titulo: '',
+    };
+    historialItems: SeccionEstadoHistorialItem[] = [];
+    historialSeccionCerrada = false;
+    historialTipoSeccion = '';
+    historialIngresoId: number | null = null;
+    historialMotivo = '';
+
+    private _printingConceptoIds = new Set<number>();
+    private _printingHistoriaIds = new Set<number>();
+
+    private readonly _categoriaTipoSeccion: Record<number, string> = {
+        1: 'historia_clinica',
+        2: 'laboratorio_clinico',
+        3: 'visiometria',
+        4: 'audiometria',
+        5: 'espirometria',
+        15: 'optometria',
+        7: 'radiografia', 8: 'radiografia', 9: 'radiografia',
+        10: 'radiografia', 11: 'radiografia', 12: 'radiografia',
+    };
+
+    isPrintingConcepto(id?: number): boolean {
+        return !!id && this._printingConceptoIds.has(id);
+    }
+
+    isPrintingHistoria(id?: number): boolean {
+        return !!id && this._printingHistoriaIds.has(id);
+    }
+
+    constructor(
+        _href: ElementRef<HTMLElement>,
+        private _cd: ChangeDetectorRef,
+        private _fetch: FetchIngresosController,
+        private router: Router,
+        private _toast: CemToastService,
+        private _session: SessionStore,
+        private modal: NzModalService,
+        private excelService: ExcelService,
+        private fb: FormBuilder,
+        private _http: HttpClient,
+    ) {
+        this.formSubirCertificado = this.fb.group({
+            examen_id: [null as number | null],
+        });
+        this.formModificarFecha = this.fb.group({
+            nuevaFecha: [null],
+        });
+    }
+
+    onCrearIngreso(): void {
+        if (!this.crearIngresos) return; // seguridad extra opcional
+        this.router.navigate(['/historias/ingresos/web/crear-ingresos']);
+    }
+
+    async ngOnInit(): Promise<void> {
+        const inicio = new Date();
+        inicio.setHours(0, 0, 0, 0);
+        const fin = new Date();
+        fin.setHours(23, 59, 59, 999);
+        this.rangoFechas = [inicio, fin];
+        this.initColumnas();
+        this.initColumnasCertificados();
+
+        const tempSubs = this._session.observable().subscribe(session => {
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.CONSULTAR_INGRESOS.CONSULTAR)) {
+                this.verIngresos = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.INGRESOS.CREAR)) {
+                this.verIngresos = true;
+                this.crearIngresos = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.INGRESOS.EDITAR)) {
+                this.verIngresos = true;
+                this.editarIngresos = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.INGRESOS.ELIMINAR)) {
+                this.verIngresos = true;
+                this.eliminarIngresos = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.INGRESOS.MODIFICAR_FECHA)) {
+                this.modificarFechaIngresos = true;
+            }
+
+            if (session.authorities.includes(ADMIN_AUTHORITY) || session.user.role === 'Admin') {
+                this.isAdmin = true;
+                this.puedeGestionarHistoria = true;
+                this.modificarFechaIngresos = true;
+                this.puedeVerHistoriaClinica = true;
+                this.puedeGenerarConcepto = true;
+                this.puedeGenerarHistoriaPdf = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.HISTORIA_CLINICA.CERRAR_ABRIR_INGRESO)) {
+                this.puedeGestionarHistoria = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.HISTORIA_CLINICA.CREAR)) {
+                this.puedeVerHistoriaClinica = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.HISTORIA_CLINICA.GENERAR_CONCEPTO)) {
+                this.puedeGenerarConcepto = true;
+            }
+
+            if (session.authorities.includes(HISTORIAS_AUTHORITIES.HISTORIA_CLINICA.GENERAR_HISTORIA_PDF)) {
+                this.puedeGenerarHistoriaPdf = true;
+            }
+
+            const rawId = (session as any)?.user?.id;
+            this._userId = rawId != null ? +rawId : null;
+        });
+        tempSubs.unsubscribe();
+
+        if (this.isAdmin) {
+            this._cargarCatalogoExamenes();
+        }
+
+        // si verAutorizaciones == false que return al inicio
+        if (this.verIngresos == false) {
+            this.router.navigate(['/inicio']);
+        }
+
+        await this.clickOnloadData(true);
+
+        const observable = this._fetch.observable();
+        observable.pipe(takeUntil(this._unsubscribe$)).subscribe((stored) => {
+            const ingresos = (stored.data || []) as Ingreso[];
+
+            this.ingresosStored = ingresos.map((ing) => {
+                const paciente = ing.paciente;
+                const nombreCompleto = paciente
+                    ? [
+                        paciente.primer_nombre,
+                        paciente.segundo_nombre,
+                        paciente.primer_apellido,
+                        paciente.segundo_apellido,
+                    ]
+                        .filter((p) => p && p.trim())
+                        .join(' ')
+                        .trim()
+                    : '—';
+
+                return {
+                    ...ing,
+                    pacienteNombreCompleto: nombreCompleto || '—',
+                };
+            });
+
+            // 🔹 extraer clientes y lugares únicos desde los ingresos
+            const clientesUnicos = new Map<number, Cliente>();
+            const lugaresUnicos = new Map<number, Municipio>();
+
+            this.ingresosStored.forEach((ing) => {
+                if (ing.cliente && ing.cliente.id && !clientesUnicos.has(ing.cliente.id)) {
+                    clientesUnicos.set(ing.cliente.id, ing.cliente);
+                }
+                const lugar = ing.lugar_atencion;
+                if (lugar && lugar.id && !lugaresUnicos.has(lugar.id)) {
+                    lugaresUnicos.set(lugar.id, lugar);
+                }
+            });
+
+            this.clientes = Array.from(clientesUnicos.values());
+            this.lugaresAtencion = Array.from(lugaresUnicos.values());
+            this.lugaresAtencionOriginal = [...this.lugaresAtencion];
+
+            this.filtrarIngresos();
+
+            // Cargar el estado de historia clínica para los ingresos visibles
+            const ids = this.ingresosStored.map(i => i.id).filter(Boolean) as number[];
+            this._cargarHistoriaStatus(ids);
+
+            this._cd.markForCheck();
+        });
+    }
+
+    ngOnDestroy(): void {
+        this._unsubscribe$.next();
+        this._unsubscribe$.complete();
+    }
+
+    private async _cargarCatalogoExamenes(): Promise<void> {
+        const url = `${environment.apiUrl}/api/general/examenes`;
+        try {
+            const examenes = await firstValueFrom(this._http.get<any[]>(url));
+            this.catalogoExamenes = examenes
+                .filter(e => e.estado === 1)
+                .map(e => ({ label: `${e.cdg_examen} - ${e.nbr_examen}`, value: e.id }))
+                .sort((a, b) => a.label.localeCompare(b.label));
+            this._cd.markForCheck();
+        } catch {
+            // silencioso
+        }
+    }
+
+    private async _cargarHistoriaStatus(ids: number[]): Promise<void> {
+        if (!ids.length) return;
+        const result = await this._fetch.fetchHistoriaStatus(ids);
+        result.fold({
+            left: () => { /* silencioso */ },
+            right: (map) => {
+                this.historiaStatusMap = { ...this.historiaStatusMap, ...map };
+                this._cd.markForCheck();
+            },
+        });
+    }
+
+    isExamenCompleto(ingresoId: number, examenId: number, categoriaExamId: number): boolean {
+        const status = this.historiaStatusMap[ingresoId];
+        if (!status) return false;
+        switch (categoriaExamId) {
+            case 1:  return status.examen_fisico;
+            case 2:  return status.laboratorio_examen_ids.includes(examenId);
+            case 3:  return status.visiometria;
+            case 4:  return status.audiometria;
+            case 5:  return status.espirometria;
+            case 7: case 8: case 9: case 10: case 11: case 12:
+                     return status.radiografia_examen_ids.includes(examenId);
+            case 15: return status.optometria;
+            case 13: return status.prueba_psicosensometrica;
+            default: return false;
+        }
+    }
+
+    isExamenCerrado(ingresoId: number, _examenId: number, categoriaExamId: number): boolean {
+        const status = this.historiaStatusMap[ingresoId];
+        if (!status) return false;
+        switch (categoriaExamId) {
+            case 1:  return !!status.historia_clinica_cerrada;
+            case 2:  return !!status.laboratorio_cerrado;
+            case 3:  return !!status.visiometria_cerrada;
+            case 4:  return !!status.audiometria_cerrada;
+            case 5:  return !!status.espirometria_cerrada;
+            case 7: case 8: case 9: case 10: case 11: case 12:
+                     return !!status.radiografia_cerrada;
+            case 15: return !!status.optometria_cerrada;
+            case 13: return !!status.prueba_psicosensometrica_cerrada;
+            default: return false;
+        }
+    }
+
+    private initColumnas(): void {
+        this.visibleColumnKeys = ['cliente', 'pacienteNombreCompleto', 'fecha_atencion', 'estado'];
+
+        this.columnas = [
+            {
+                title: 'Ingreso',
+                key: 'id',
+                sortable: true,
+                align: 'center',
+                verticalAlign: 'middle',
+                cellTemplate: this.ingresoTpl,   // 👈 AQUI
+            },
+            {
+                title: 'Cliente',
+                key: 'cliente',
+                verticalAlign: 'middle',
+                cellTemplate: this.clienteTpl,
+            },
+            {
+                title: 'Paciente',
+                key: 'pacienteNombreCompleto',
+                sortable: true,
+                verticalAlign: 'middle',
+                cellTemplate: this.pacienteTpl,
+            },
+            // {
+            //     title: 'Fecha Atención',
+            //     key: 'fecha_atencion',
+            //     sortable: true,
+            //     verticalAlign: 'middle',
+            //     cellTemplate: this.fechaTpl,
+            // },
+            {
+                title: 'Exámenes',
+                key: 'examenes',
+                verticalAlign: 'middle',
+                cellTemplate: this.examenesListaTpl,
+            },
+            {
+                title: 'Estado',
+                key: 'estado',
+                width: '140px',
+                align: 'center',
+                verticalAlign: 'middle',
+                cellTemplate: this.estadoTpl,
+                sortable: true
+            },
+            {
+                title: 'Acciones',
+                key: 'acciones',
+                width: '200px',
+                verticalAlign: 'middle',
+                align: 'center',
+                fixed: false,
+                cellTemplate: this.accionesTpl,
+            },
+        ];
+    }
+
+    private initColumnasCertificados(): void {
+        this.columnasCertificados = [
+            {
+                title: 'No.',
+                key: '__index',
+                width: '60px',
+                align: 'center',
+                verticalAlign: 'middle',
+            },
+            {
+                title: 'Examen',
+                key: 'nombre_examen',
+                align: 'left',
+                verticalAlign: 'middle',
+            },
+            {
+                title: 'Archivo',
+                key: 'archivo',
+                align: 'left',
+                verticalAlign: 'middle',
+                cellTemplate: this.archivoCertTpl,
+            },
+            {
+                title: 'Acciones',
+                key: 'acciones',
+                width: '80px',
+                align: 'center',
+                verticalAlign: 'middle',
+                cellTemplate: this.accionesSubirCertTpl,
+            },
+        ];
+    }
+
+    async clickOnloadData(refresh: boolean, busqueda?: string): Promise<void> {
+        this._isLoading = true;
+        this.ingresosStored = [];
+
+        try {
+            await this._fetch.fetchGestion(refresh, this.rangoFechas, busqueda);
+        } catch (error) {
+            console.error('Error cargando ingresos', error);
+            this._toast.error('Error al cargar los ingresos');
+        } finally {
+            this._isLoading = false;
+            this._cd.markForCheck();
+        }
+    }
+
+    applyFilters(): void {
+        this.filtrarIngresos();
+        this._cd.markForCheck();
+    }
+
+    onEstadoChange(val: number | null): void {
+        this.estado = val ?? undefined;
+        this.applyFilters();
+    }
+
+    async onBuscar(): Promise<void> {
+        const busq = this.busqueda?.trim();
+        if (busq) {
+            await this.clickOnloadData(true, busq);
+        }
+        this.applyFilters();
+    }
+
+    async onRangoCambio(rango: Date[]): Promise<void> {
+        if (rango && rango.length === 2) {
+            this.rangoFechas = rango;
+            await this.clickOnloadData(true); // 🔹 Recarga datos con filtros actualizados
+            this.applyFilters();
+        } else {
+            // 🔹 Si limpia el rango, también aplica para mostrar todo
+            this.rangoFechas = [];
+            this.applyFilters();
+        }
+    }
+
+    onClienteChange(clienteId: number | null): void {
+        this.cliente_id = clienteId;
+        this.empresa_labor_id = null;
+
+        if (clienteId) {
+            const empresasUnicas = new Map<number, any>();
+            this.ingresosStored.forEach(ing => {
+                if (ing.cliente_id === clienteId && (ing as any).empresa_labor?.id) {
+                    const emp = (ing as any).empresa_labor;
+                    if (!empresasUnicas.has(emp.id)) empresasUnicas.set(emp.id, emp);
+                }
+            });
+            this.empresasLabor = Array.from(empresasUnicas.values());
+        } else {
+            this.empresasLabor = [];
+        }
+
+        this.lugaresAtencion = [...this.lugaresAtencionOriginal];
+        this._cd.markForCheck();
+    }
+
+    private filtrarIngresos(): void {
+        if (!this.ingresosStored) return;
+
+        this.ingresosFiltrados = this.ingresosStored.filter((ing) => {
+            const matchCliente = !this.cliente_id || ing.cliente_id === this.cliente_id;
+            const matchLugar = !this.lugar_atencion_id || ing.lugar_atencion?.id === this.lugar_atencion_id;
+            const matchEstado = this.estado === undefined || this.estado === null || (ing as any).estado === this.estado;
+            const matchEmpresa = !this.empresa_labor_id || (ing as any).empresa_labor?.id === this.empresa_labor_id;
+            const matchExamen = !this.examen_id ||
+                ((ing as any).examenes ?? []).some((ex: any) => ex.examen_id === this.examen_id);
+
+            const busq = this.busqueda?.trim().toLowerCase();
+            const matchBusqueda = !busq ||
+                ing.id?.toString().padStart(6, '0').includes(busq) ||
+                (ing.paciente?.identificacion ?? '').toLowerCase().includes(busq);
+
+            return matchCliente && matchLugar && matchEstado && matchEmpresa && matchExamen && matchBusqueda;
+        });
+    }
+
+    async onRefresh(): Promise<void> {
+        this.isRefreshing = true;
+        try {
+            // 🔹 Si hay rango de fechas definido y válido, recarga con ese filtro
+            if (this.rangoFechas && this.rangoFechas.length === 2) {
+                await this.clickOnloadData(true);
+                this.applyFilters();
+            } else {
+                // 🔹 Si no hay rango definido, limpia filtros y muestra todo
+                this.rangoFechas = [];
+                await this.clickOnloadData(true);
+                this.applyFilters();
+            }
+        } catch (error) {
+            console.error('Error al refrescar los datos:', error);
+        } finally {
+            this.isRefreshing = false;
+            this._cd.markForCheck(); // asegura que la tabla se renderice
+        }
+    }
+
+    onAccionEjecutada(event: { action: string; row: Ingreso & { pacienteNombreCompleto?: string } }): void {
+        if (event.action === 'editar') {
+            this.editarIngreso(event.row);
+        } else if (event.action === 'ver_pdf') {
+            this.verPdfIngreso(event.row);
+        } else if (event.action === 'subir_certificados') {
+            this.abrirModalCertificados(event.row);
+        } else if (event.action === 'eliminar') {
+            this.eliminarIngreso(event.row);
+        } else if (event.action === 'historia') {
+            this.abrirHistoriaClinica(event.row);
+        } else if (event.action === 'generar_concepto') {
+            this.generarConcepto(event.row);
+        } else if (event.action === 'generar_historia') {
+            this.generarHistoriaPdf(event.row);
+        } else if (event.action === 'modificar_fecha') {
+            this.abrirModalModificarFecha(event.row);
+        }
+    }
+
+    abrirHistoriaClinica(ingreso: Ingreso): void {
+        this.router.navigate(['/historias/historia-clinica/web/crear', ingreso.id]);
+    }
+
+    async generarConcepto(ingreso: Ingreso & { pacienteNombreCompleto?: string }): Promise<void> {
+        if (!ingreso.id || this._printingConceptoIds.has(ingreso.id)) return;
+
+        this._printingConceptoIds.add(ingreso.id);
+        this._cd.markForCheck();
+
+        try {
+            const url = `${HISTORIAS_END_POINTS.V1.CONCEPTO_PDF}/${ingreso.id}/pdf`;
+            const blob = await firstValueFrom(this._http.get(url, { responseType: 'blob' }));
+            const nombre = ingreso.pacienteNombreCompleto || 'paciente';
+            const identificacion = ingreso.paciente?.identificacion ?? '';
+            const ingresoId = ingreso.id.toString().padStart(6, '0');
+            const fileName = `${[nombre, identificacion, ingresoId].filter(Boolean).join(' - ')}.pdf`;
+            this._descargarBlob(blob, fileName);
+        } catch {
+            this._toast.error('Error al generar el concepto PDF');
+        } finally {
+            this._printingConceptoIds.delete(ingreso.id);
+            this._cd.markForCheck();
+        }
+    }
+
+    async generarHistoriaPdf(ingreso: Ingreso & { pacienteNombreCompleto?: string }): Promise<void> {
+        if (!ingreso.id || this._printingHistoriaIds.has(ingreso.id)) return;
+
+        this._printingHistoriaIds.add(ingreso.id);
+        this._cd.markForCheck();
+
+        try {
+            const url = `${HISTORIAS_END_POINTS.V1.HISTORIA_CLINICA.EXPORTAR_PDF}/${ingreso.id}/pdf`;
+            const blob = await firstValueFrom(this._http.get(url, { responseType: 'blob' }));
+            const nombre = ingreso.pacienteNombreCompleto || 'paciente';
+            const identificacion = ingreso.paciente?.identificacion ?? '';
+            const ingresoId = ingreso.id.toString().padStart(6, '0');
+            const fileName = `historia_${[nombre, identificacion, ingresoId].filter(Boolean).join(' - ')}.pdf`;
+            this._descargarBlob(blob, fileName);
+        } catch {
+            this._toast.error('Error al generar la historia clínica PDF');
+        } finally {
+            this._printingHistoriaIds.delete(ingreso.id);
+            this._cd.markForCheck();
+        }
+    }
+
+    private editarIngreso(ingreso: Ingreso): void {
+        if (!ingreso.id) {
+            // botón de "Nuevo Ingreso" usa esto con id vacío
+            this.router.navigate(['/historias/ingresos/web/crear-ingresos']);
+            return;
+        }
+
+        this.router.navigate(['/historias/ingresos/web/crear-ingresos'], {
+            queryParams: { ingreso_id: ingreso.id },
+        });
+    }
+
+    private async verPdfIngreso(ingreso: Ingreso): Promise<void> {
+        if (!ingreso.id) {
+            this._toast.info('No se puede abrir el PDF: ingreso sin ID');
+            return;
+        }
+
+        if (this._isLoading) return;
+
+        try {
+            this._isLoading = true;
+            this._cd.markForCheck();
+
+            const result = await this._fetch.fetchPdfProveedores(ingreso.id);
+
+            result.fold({
+                left: (err: string) => {
+                    this._toast.error(err ?? 'No se pudo obtener los proveedores');
+                },
+                right: (proveedores) => {
+                    if (proveedores.length === 0) {
+                        this._toast.info('Este ingreso no tiene exámenes asignados');
+                        return;
+                    }
+                    if (proveedores.length === 1) {
+                        this._descargarPdfProveedor(ingreso, proveedores[0].id);
+                        return;
+                    }
+                    this._ingresoParaPdf = ingreso;
+                    this.pdfProveedores = proveedores;
+                    this.pdfProveedorSeleccionado = proveedores[0].id;
+                    this.pdfProveedorModal.visible = true;
+                }
+            });
+        } catch {
+            this._toast.error('Ocurrió un error al cargar los proveedores');
+        } finally {
+            this._isLoading = false;
+            this._cd.markForCheck();
+        }
+    }
+
+    private async _descargarPdfProveedor(ingreso: Ingreso, proveedorId: number | null): Promise<void> {
+        try {
+            this._isLoading = true;
+            this._cd.markForCheck();
+
+            const result = await this._fetch.fetchExportPdf(ingreso.id!, proveedorId);
+
+            result.fold({
+                left: (err: string) => {
+                    this._toast.error(err ?? 'No se pudo generar el PDF');
+                },
+                right: ({ blob, fileName }) => {
+                    if (!(blob instanceof Blob) || blob.size === 0) {
+                        this._toast.error('El archivo recibido es inválido.');
+                        return;
+                    }
+                    const pdfBlob = blob.type === 'application/pdf'
+                        ? blob
+                        : new Blob([blob], { type: 'application/pdf' });
+                    const safeName = this._sanitizarNombre(fileName ?? this._nombrePdfPorDefecto(ingreso.id!));
+                    this._descargarBlob(pdfBlob, safeName);
+                    this._toast.success('PDF generado');
+                }
+            });
+        } catch {
+            this._toast.error('Ocurrió un error al generar el PDF');
+        } finally {
+            this._isLoading = false;
+            this._cd.markForCheck();
+        }
+    }
+
+    confirmarDescargarPdf(): void {
+        if (!this._ingresoParaPdf) return;
+        const ingreso = this._ingresoParaPdf;
+        const proveedorId = this.pdfProveedorSeleccionado;
+        this.cerrarModalPdfProveedor();
+        this._descargarPdfProveedor(ingreso, proveedorId);
+    }
+
+    cerrarModalPdfProveedor(): void {
+        this.pdfProveedorModal.visible = false;
+        this._ingresoParaPdf = null;
+        this.pdfProveedores = [];
+        this.pdfProveedorSeleccionado = null;
+        this._cd.markForCheck();
+    }
+
+    private _nombrePdfPorDefecto(ingresoId: number): string {
+        const idFormatted = ingresoId.toString().padStart(6, '0');
+        return `remision_${idFormatted}.pdf`;
+    }
+
+    private _descargarBlob(blob: Blob, fileName: string): void {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(url), 150);
+    }
+
+    private _sanitizarNombre(nombre: string): string {
+        // Quita caracteres problemáticos en Windows/macOS/Linux
+        const cleaned = nombre.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+        return cleaned || 'archivo.pdf';
+    }
+
+    private async eliminarIngreso(ingreso: Ingreso): Promise<void> {
+        if (!ingreso.id) {
+            this._toast.info('No se puede eliminar: ingreso sin ID');
+            return;
+        }
+
+        this.modal.confirm({
+            nzTitle: '¿Estás seguro que deseas eliminar este ingreso?',
+            nzContent: 'Esta acción cambiará el estado del ingreso a inactivo.',
+            nzOkText: 'Sí, eliminar',
+            nzOkDanger: true,
+            nzCancelText: 'Cancelar',
+            nzOnOk: async () => {
+                this._isLoading = true;
+                const result = await this._fetch.fetchDeleteIngreso(ingreso.id!);
+
+                result.fold({
+                    left: (err: string) => {
+                        this._toast.error(err ?? 'No se pudo eliminar el ingreso');
+                        this._isLoading = false;
+                        this._cd.markForCheck();
+                    },
+                    right: async (resp: { message: string }) => {
+                        this._toast.success(resp?.message ?? 'Ingreso eliminado correctamente');
+                        await this.onRefresh();
+                        this.ingresosStored = this.ingresosStored.filter(i => i.id !== ingreso.id);
+                        this._isLoading = false;
+                        this._cd.markForCheck();
+                    }
+                });
+            }
+        });
+    }
+
+    async onExportExcel(): Promise<void> {
+        this.isExportingExcel = true;
+        this._cd.markForCheck();
+
+        // Usa los datos filtrados si existen, o todos
+        const datos = this.ingresosFiltrados?.length
+            ? this.ingresosFiltrados
+            : this.ingresosStored;
+
+        if (!datos || datos.length === 0) {
+            this._toast.warning('No hay datos para exportar.');
+            this.isExportingExcel = false;
+            this._cd.markForCheck();
+            return;
+        }
+
+        try {
+            const dataExcel = this._convertIngresosToExcel(datos);
+
+            // Simulamos un pequeño delay (por si exportar es instantáneo)
+            await new Promise((resolve) => setTimeout(resolve, 800));
+
+            this.excelService.exportToExcel(dataExcel, 'ingresos');
+            this._toast.success('Archivo Excel exportado correctamente.');
+        } catch (error) {
+            console.error('Error exportando Excel:', error);
+            this._toast.error('Ocurrió un error al exportar.');
+        } finally {
+            this.isExportingExcel = false;
+            this._cd.markForCheck();
+        }
+    }
+
+    // ============================================================
+    // 📁 MODAL CERTIFICADOS
+    // ============================================================
+
+    async abrirModalCertificados(ingreso: Ingreso & { pacienteNombreCompleto?: string }): Promise<void> {
+        if (!ingreso.id) {
+            this._toast.info('Ingreso sin ID');
+            return;
+        }
+
+        this.ingresoActual = ingreso;
+        this.certificadosActuales = [];
+        this.fileListCert = [];
+        this.formSubirCertificado.reset({ examen_id: null });
+
+        // Construir opciones desde los exámenes del ingreso
+        const examenes: any[] = (ingreso as any).examenes ?? [];
+        this.examenesIngresoOpciones = examenes.map(ex => ({
+            label: `${ex.examen?.cdg_examen ?? ''} - ${ex.examen?.nbr_examen ?? 'Sin nombre'}`,
+            value: ex.examen_id,
+            _examen: ex.examen,
+        }));
+
+        const idFormatted = ingreso.id.toString().padStart(6, '0');
+        this.certificadosModal.title = `Certificados — Ingreso #${idFormatted}`;
+        this.certificadosModal.visible = true;
+        this._cd.markForCheck();
+
+        // Cargar certificados existentes del backend
+        this.certificadosModal.cargando = true;
+        const result = await this._fetch.fetchCertificadosByIngreso(ingreso.id, ingreso.paciente_id);
+        this.certificadosModal.cargando = false;
+
+        result.fold({
+            left: () => { /* silencioso, la tabla queda vacía */ },
+            right: (response) => {
+                this.certificadosActuales = (response.data ?? []).map((cert, idx) => ({
+                    ...cert,
+                    __index: idx + 1,
+                    ruta: `${environment.apiUrl}${cert.archivo}`,
+                    archivo: this._extraerNombreArchivo(cert.archivo ?? ''),
+                }));
+                this._cd.markForCheck();
+            },
+        });
+    }
+
+    cerrarModalCertificados(): void {
+        this.certificadosModal.visible = false;
+        this.ingresoActual = null;
+        this.certificadosActuales = [];
+        this.fileListCert = [];
+        this._cd.markForCheck();
+    }
+
+    beforeUploadCertificado = (file: NzUploadFile): boolean => {
+        const examenId = this.formSubirCertificado.value.examen_id;
+        if (!examenId) {
+            this._toast.error('Debe seleccionar un examen');
+            return false;
+        }
+
+        const realFile = file.originFileObj || (file as unknown as File);
+        if (!(realFile instanceof File)) {
+            this._toast.error('Archivo inválido');
+            return false;
+        }
+
+        const maxMb = 5;
+        if (realFile.size > maxMb * 1024 * 1024) {
+            this._toast.error(`El archivo supera los ${maxMb}MB`);
+            return false;
+        }
+
+        const opcion = this.examenesIngresoOpciones.find(o => o.value === examenId);
+        const nuevoCert: CertificadoIngreso = {
+            ingreso_id: this.ingresoActual?.id ?? 0,
+            paciente_id: this.ingresoActual?.paciente_id ?? 0,
+            examen_id: examenId,
+            archivo: file.name,
+            ruta: realFile,
+            nombre_examen: opcion?._examen?.nbr_examen ?? '',
+            codigo_examen: opcion?._examen?.cdg_examen ?? '',
+        };
+
+        this.certificadosActuales = [
+            ...this.certificadosActuales,
+            { __index: this.certificadosActuales.length + 1, ...nuevoCert } as any,
+        ];
+
+        this.formSubirCertificado.reset({ examen_id: null });
+        this.fileListCert = this.fileListCert.concat(file);
+        this._cd.detectChanges();
+        return false;
+    };
+
+    async subirCertificados(): Promise<void> {
+        if (!this.ingresoActual?.id || !this.ingresoActual?.paciente_id) {
+            this._toast.error('Datos de ingreso incompletos');
+            return;
+        }
+
+        const nuevos = this.certificadosActuales.filter(c => c.ruta instanceof File);
+        if (nuevos.length === 0) {
+            this._toast.info('No hay archivos nuevos para guardar');
+            return;
+        }
+
+        const formData = new FormData();
+        nuevos.forEach((cert, idx) => {
+            formData.append(`archivos[${idx}][ingreso_id]`, String(cert.ingreso_id));
+            formData.append(`archivos[${idx}][paciente_id]`, String(cert.paciente_id));
+            formData.append(`archivos[${idx}][examen_id]`, String(cert.examen_id));
+            formData.append(`archivos[${idx}][archivo]`, cert.ruta as File);
+        });
+
+        this._isLoading = true;
+        this._cd.markForCheck();
+
+        const result = await this._fetch.fetchSubirCertificados(formData, nuevos);
+
+        this._isLoading = false;
+
+        result.fold({
+            left: (err) => {
+                this._toast.error(err ?? 'Error al subir certificados');
+                this._cd.markForCheck();
+            },
+            right: (response) => {
+                if (response.data) {
+                    this.certificadosActuales = this.certificadosActuales.map((local) => {
+                        const remoto = response.data!.find(r =>
+                            r.examen_id === local.examen_id &&
+                            !(local.id)
+                        );
+                        if (remoto) {
+                            return {
+                                ...local,
+                                id: remoto.id,
+                                archivo: this._extraerNombreArchivo(remoto.archivo ?? ''),
+                                ruta: `${environment.apiUrl}${remoto.archivo}`,
+                            };
+                        }
+                        return local;
+                    });
+                }
+                this._toast.success(response.message);
+                this._cd.markForCheck();
+            },
+        });
+    }
+
+    async onEliminarCertificado(event: { action: string; row: CertificadoIngreso }): Promise<void> {
+        if (event.action !== 'eliminar') return;
+        const cert = event.row;
+
+        if (!cert.id) {
+            // solo local, eliminar sin llamar backend
+            this.certificadosActuales = this.certificadosActuales.filter(c => c !== cert);
+            this._cd.detectChanges();
+            return;
+        }
+
+        this.modal.confirm({
+            nzTitle: '¿Eliminar este certificado?',
+            nzContent: `Examen: ${cert.nombre_examen}<br>Archivo: ${cert.archivo}`,
+            nzOkText: 'Sí, eliminar',
+            nzOkDanger: true,
+            nzCancelText: 'Cancelar',
+            nzOnOk: async () => {
+                const result = await this._fetch.fetchEliminarCertificado(cert.id!);
+                result.fold({
+                    left: (err) => this._toast.error(err ?? 'Error al eliminar'),
+                    right: () => {
+                        this.certificadosActuales = this.certificadosActuales.filter(c => c !== cert);
+                        this._toast.success('Certificado eliminado');
+                        this._cd.markForCheck();
+                    },
+                });
+            },
+        });
+    }
+
+    private _extraerNombreArchivo(ruta: string): string {
+        return ruta.split('/').pop() ?? ruta;
+    }
+
+    // ============================================================
+    // 🔒 MODAL CERRAR / ABRIR HISTORIA POR EXAMEN
+    // ============================================================
+
+    async onExamenClick(row: Ingreso, ex: any): Promise<void> {
+        if (!this.puedeGestionarHistoria) return;
+        if (!row.id || !ex.examen?.categoria_exam_id) return;
+
+        const tipoSeccion = this._categoriaTipoSeccion[ex.examen.categoria_exam_id];
+        if (!tipoSeccion) return;
+
+        const tieneRegistro = this.isExamenCompleto(row.id, ex.examen_id, ex.examen.categoria_exam_id)
+            || this.isExamenCerrado(row.id, ex.examen_id, ex.examen.categoria_exam_id);
+        if (!tieneRegistro) return;
+
+        const nombreExamen = ex.examen?.nbr_examen || ex.examen?.cdg_examen || 'Examen';
+        const idFormatted = row.id.toString().padStart(6, '0');
+
+        this.historialIngresoId = row.id;
+        this.historialTipoSeccion = tipoSeccion;
+        this.historialMotivo = '';
+        this.historialItems = [];
+        this.historialModal.titulo = `${nombreExamen} — Ingreso #${idFormatted}`;
+        this.historialModal.visible = true;
+        this.historialModal.cargando = true;
+        this._cd.markForCheck();
+
+        const result = await this._fetch.fetchSeccionEstadoHistorial(row.id, tipoSeccion);
+        result.fold({
+            left: () => { this.historialModal.cargando = false; this._cd.markForCheck(); },
+            right: (items) => {
+                this.historialItems = items;
+                this.historialSeccionCerrada = items.length > 0 && (items[0].proceso === 'CERRAR' || items[0].estado === 9);
+                this.historialModal.cargando = false;
+                this._cd.markForCheck();
+            },
+        });
+    }
+
+    cerrarModalHistorial(): void {
+        this.historialModal.visible = false;
+        this.historialItems = [];
+        this.historialMotivo = '';
+        this.historialIngresoId = null;
+        this.historialTipoSeccion = '';
+        this._cd.markForCheck();
+    }
+
+    async onGuardarEstadoSeccion(): Promise<void> {
+        if (!this.historialIngresoId || !this._userId) {
+            this._toast.error('Faltan datos de sesión o ingreso.');
+            return;
+        }
+
+        const nuevoEstado = this.historialSeccionCerrada ? 1 : 9;
+
+        if (nuevoEstado === 1 && !this.historialMotivo.trim()) {
+            this._toast.warning('Debe ingresar el motivo de apertura.');
+            return;
+        }
+
+        this.historialModal.guardando = true;
+        this._cd.markForCheck();
+
+        const result = await this._fetch.fetchGuardarSeccionEstado({
+            ingreso_id: this.historialIngresoId,
+            tipo_seccion: this.historialTipoSeccion,
+            estado: nuevoEstado,
+            user_id: this._userId,
+            descripcion: nuevoEstado === 1 ? this.historialMotivo.trim() : undefined,
+        });
+
+        result.fold({
+            left: async (err) => {
+                this._toast.error(err ?? 'Error al actualizar el estado');
+                this.historialModal.guardando = false;
+                this._cd.markForCheck();
+            },
+            right: async () => {
+                this.historialSeccionCerrada = !this.historialSeccionCerrada;
+                this.historialMotivo = '';
+                this._toast.success(
+                    this.historialSeccionCerrada ? 'Historia cerrada correctamente' : 'Historia abierta correctamente'
+                );
+
+                // Recargar historial y estado cerrado actualizado
+                const r = await this._fetch.fetchSeccionEstadoHistorial(this.historialIngresoId!, this.historialTipoSeccion);
+                r.fold({
+                    left: () => {},
+                    right: (items) => { this.historialItems = items; },
+                });
+
+                await this._cargarHistoriaStatus([this.historialIngresoId!]);
+
+                this.historialModal.guardando = false;
+                this.cerrarModalHistorial();
+            },
+        });
+    }
+
+    private _convertIngresosToExcel(data: (Ingreso & { pacienteNombreCompleto?: string })[]): any[] {
+        const excelData: any[] = [];
+
+        data.forEach((ing: any) => {
+            const paciente = ing.paciente;
+            const cliente = ing.cliente;
+            const lugar = ing.lugar_atencion;
+            const sede = ing.sede;
+            const empresaLabor = ing.empresa_labor;
+            const tipoEval = ing.tipo_evaluacion;
+            const ocupacion = ing.ocupacion;
+
+            const nombrePaciente = ing.pacienteNombreCompleto || '—';
+
+            const estadoTexto = ing.estado === 1 ? 'Activo' : 'Inactivo';
+
+            const fechaAtencion = ing.fecha_atencion
+                ? new Date(ing.fecha_atencion).toLocaleDateString('es-CO')
+                : '—';
+
+            const fechaCreacion = ing.created_at
+                ? new Date(ing.created_at).toLocaleDateString('es-CO')
+                : '—';
+
+            const enfasisTexto = ing.enfasis?.length
+                ? ing.enfasis.map((e: any) => e.nombre).join(', ')
+                : '—';
+
+            // ✅ Si no hay exámenes, una sola fila
+            if (!ing.examenes || ing.examenes.length === 0) {
+                excelData.push({
+                    ['ID Ingreso']: ing.id?.toString().padStart(6, '0') || '—',
+                    ['Fecha Creación']: fechaCreacion,
+                    ['Fecha Atención']: fechaAtencion,
+                    ['Estado']: estadoTexto,
+                    ['Cliente']: cliente?.razon_social || cliente?.nombre_representante || '—',
+                    ['Sede']: sede?.nombre_sede || '—',
+                    ['Proyecto']: empresaLabor?.nombre || '—',
+                    ['Lugar de Atención']: lugar?.nombre || '—',
+                    ['Tipo Evaluación']: tipoEval?.nombre || '—',
+                    ['Paciente']: nombrePaciente,
+                    ['Identificación']: paciente?.identificacion || '—',
+                    ['Celular']: paciente?.celular || '—',
+                    ['Ocupación']: ocupacion?.nombre || '—',
+                    ['Énfasis']: enfasisTexto,
+                    ['Exámenes']: 'No hay exámenes registrados',
+                    ['Cantidad']: '—',
+                    ['Tarifa Proveedor']: '—',
+                    // ['Valor Total Examen Proveedor']: '—',
+                    ['Tarifa Cliente']: '—',
+                    ['Valor Total Cliente']: '—',
+                    ['Valor Total Proveedor']: '—',
+                    ['Observación']: ing.observacion || '',
+                });
+                return;
+            }
+
+            // ✅ Calcular el total de valores netos de los exámenes
+            let totalValorNeto = 0;
+            let totalValorProveedor = 0;
+
+            ing.examenes.forEach((ex: any, index: number) => {
+                const nombreExamen = ex.examen?.nbr_examen?.trim() ||
+                                   ex.examen?.cdg_examen?.trim() ||
+                                   'Sin nombre';
+
+                const cantidad = ex.cantidad || 1;
+                const valorNeto = ex.valor_neto || 0; // Tarifa Cliente (de examenes_ingresos)
+                totalValorNeto += valorNeto;
+
+                // 🔹 Buscar la tarifa del proveedor en tarifa_proveedor usando proveedor_id + examen_id
+                let valorTarifaProveedor = 0;
+
+                // El examen del ingreso tiene proveedor_id, con ese ID buscamos en las tarifas
+                if (ex.proveedor_id && ex.examen_id && ex.examen?.tarifas_proveedor) {
+                    const tarifaProv = ex.examen.tarifas_proveedor.find(
+                        (tp: any) => tp.proveedor_id === ex.proveedor_id && tp.examen_id === ex.examen_id
+                    );
+                    valorTarifaProveedor = tarifaProv?.valor_tarifa || 0;
+                }
+
+                // 🔹 Calcular el valor total del proveedor (valor_tarifa * cantidad)
+                const valorTotalProveedorExamen = valorTarifaProveedor * cantidad;
+                totalValorProveedor += valorTotalProveedorExamen;
+
+                const isLast = index === ing.examenes.length - 1;
+
+                excelData.push({
+                    ['ID Ingreso']: index === 0 ? ing.id?.toString().padStart(6, '0') || '—' : '',
+                    ['Fecha Creación']: index === 0 ? fechaCreacion : '',
+                    ['Fecha Atención']: index === 0 ? fechaAtencion : '',
+                    ['Estado']: index === 0 ? estadoTexto : '',
+                    ['Cliente']: index === 0 ? (cliente?.razon_social || cliente?.nombre_representante || '—') : '',
+                    ['Sede']: index === 0 ? (sede?.nombre_sede || '—') : '',
+                    ['Proyecto']: index === 0 ? (empresaLabor?.nombre || '—') : '',
+                    ['Lugar de Atención']: index === 0 ? (lugar?.nombre || '—') : '',
+                    ['Tipo Evaluación']: index === 0 ? (tipoEval?.nombre || '—') : '',
+                    ['Paciente']: index === 0 ? nombrePaciente : '',
+                    ['Identificación']: index === 0 ? (paciente?.identificacion || '—') : '',
+                    ['Celular']: index === 0 ? (paciente?.celular || '—') : '',
+                    ['Ocupación']: index === 0 ? (ocupacion?.nombre || '—') : '',
+                    ['Énfasis']: index === 0 ? enfasisTexto : '',
+                    ['Exámenes']: nombreExamen,
+                    ['Cantidad']: cantidad,
+                    ['Tarifa Proveedor']: valorTarifaProveedor,
+                    // ['Valor Total Examen Proveedor']: valorTotalProveedorExamen,
+                    ['Tarifa Cliente']: valorNeto,
+                    ['Valor Total Cliente']: isLast ? totalValorNeto : '',
+                    ['Valor Total Proveedor']: isLast ? totalValorProveedor : '',
+                    ['Observación']: isLast ? (ing.observacion || '') : '',
+                });
+            });
+        });
+
+        return excelData;
+    }
+
+    abrirModalModificarFecha(ingreso: Ingreso): void {
+        this.ingresoActual = ingreso;
+
+        const fechaActual = ingreso.fecha_atencion
+            ? (typeof ingreso.fecha_atencion === 'string' ? new Date(ingreso.fecha_atencion) : ingreso.fecha_atencion)
+            : null;
+
+        this.formModificarFecha.patchValue({ nuevaFecha: fechaActual });
+        this.modificarFechaModal.visible = true;
+        this._cd.markForCheck();
+    }
+
+    cerrarModalModificarFecha(): void {
+        this.modificarFechaModal.visible = false;
+        this.formModificarFecha.reset();
+        this.ingresoActual = null;
+        this._cd.markForCheck();
+    }
+
+    async guardarNuevaFechaIngreso(): Promise<void> {
+        if (this.formModificarFecha.invalid) {
+            this._toast.error('Por favor seleccione una fecha válida');
+            return;
+        }
+
+        if (!this.ingresoActual?.id) {
+            this._toast.error('No se pudo identificar el ingreso');
+            return;
+        }
+
+        const nuevaFecha = this.formModificarFecha.value.nuevaFecha;
+        if (!nuevaFecha) {
+            this._toast.error('Por favor seleccione una fecha');
+            return;
+        }
+
+        this.modificarFechaModal.cargando = true;
+        this._cd.markForCheck();
+
+        const fechaISO = nuevaFecha instanceof Date
+            ? nuevaFecha.toISOString()
+            : new Date(nuevaFecha).toISOString();
+
+        const result = await this._fetch.fetchModificarFechaIngreso(this.ingresoActual.id, fechaISO);
+
+        result.fold({
+            left: (err: string) => {
+                this._toast.error(err ?? 'Error al actualizar la fecha');
+                this.modificarFechaModal.cargando = false;
+                this._cd.markForCheck();
+            },
+            right: async (resp: { message: string; ingreso: Ingreso }) => {
+                if (resp.ingreso) {
+                    this.ingresosStored = this.ingresosStored.map(i =>
+                        i.id === resp.ingreso.id ? { ...i, ...resp.ingreso } : i
+                    );
+                    this.filtrarIngresos();
+                }
+                this._toast.success(resp.message || 'Fecha actualizada correctamente');
+                this.cerrarModalModificarFecha();
+                this.modificarFechaModal.cargando = false;
+                this._cd.markForCheck();
+            }
+        });
+    }
+
+}

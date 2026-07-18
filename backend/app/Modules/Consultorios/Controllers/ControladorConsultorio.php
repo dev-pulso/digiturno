@@ -25,12 +25,14 @@ class ControladorConsultorio extends Controller
         $turnosEnEspera = Turno::with(['examenPaciente.tipoExamen'])
             ->where('area_id', $area->id)
             ->where('estado', EstadoTurno::EnEspera)
+            ->whereDate('created_at', today())
             ->orderBy('created_at')
             ->get();
 
         $turnoActual = Turno::with(['examenPaciente.tipoExamen'])
             ->where('area_id', $area->id)
             ->where('estado', EstadoTurno::Llamando)
+            ->whereDate('created_at', today())
             ->latest('llamado_en')
             ->first();
 
@@ -42,25 +44,36 @@ class ControladorConsultorio extends Controller
 
     public function llamarSiguiente(Request $request, Area $area): JsonResponse
     {
-        $siguiente = Turno::where('area_id', $area->id)
+        $cola = Turno::where('area_id', $area->id)
             ->where('estado', EstadoTurno::EnEspera)
+            ->whereDate('created_at', today())
             ->orderBy('created_at')
-            ->first();
+            ->get();
 
-        if (!$siguiente) {
+        if ($cola->isEmpty()) {
             return response()->json(['mensaje' => 'No hay turnos en espera'], 404);
         }
 
-        $turno = $this->maquinaEstados->llamar(
-            $siguiente,
-            $request->input('llamado_por')
-        );
+        foreach ($cola as $siguiente) {
+            $ocupado = Turno::turnoEnAtencionDePaciente($siguiente->paciente_id, $siguiente->id);
 
-        $turno->load('area', 'examenPaciente.tipoExamen');
+            if ($ocupado && $ocupado->area_id !== $siguiente->area_id) {
+                continue;
+            }
 
-        try { broadcast(new TurnoLlamado($turno)); } catch (\Exception $e) {}
+            $turno = $this->maquinaEstados->llamar(
+                $siguiente,
+                $request->input('llamado_por')
+            );
 
-        return response()->json(new TurnoResource($turno));
+            $turno->load('area', 'examenPaciente.tipoExamen');
+
+            try { broadcast(new TurnoLlamado($turno)); } catch (\Exception $e) {}
+
+            return response()->json(new TurnoResource($turno));
+        }
+
+        return response()->json(['mensaje' => 'No hay pacientes disponibles en este momento'], 404);
     }
 
     public function actual(Area $area): JsonResponse
@@ -68,6 +81,7 @@ class ControladorConsultorio extends Controller
         $actual = Turno::with(['examenPaciente.tipoExamen'])
             ->where('area_id', $area->id)
             ->where('estado', EstadoTurno::Llamando)
+            ->whereDate('created_at', today())
             ->latest('llamado_en')
             ->first();
 

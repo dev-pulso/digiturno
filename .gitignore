@@ -21,6 +21,11 @@
 *.swp
 *.swo
 *.sublime-workspace
+.agents
+.claude
+docs
+.dev-logs
+
 
 # OS
 .DS_Store

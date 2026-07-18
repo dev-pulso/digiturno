@@ -5,12 +5,17 @@ namespace App\Modules\Patients\Controllers;
 use App\Models\Paciente;
 use App\Modules\Patients\Requests\CrearPacienteRequest;
 use App\Modules\Patients\Resources\PacienteResource;
+use App\Services\ConsaludService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class ControladorPaciente extends Controller
 {
+    public function __construct(
+        private ConsaludService $consaludService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $query = Paciente::query();
@@ -62,15 +67,65 @@ class ControladorPaciente extends Controller
     public function buscarPorDocumento(Request $request): JsonResponse
     {
         $request->validate(['numero_documento' => 'required|string|max:30']);
+        $documento = $request->numero_documento;
 
-        $paciente = Paciente::buscarPorDocumento($request->numero_documento)
-            ->with('examenes.tipoExamen.area')
-            ->first();
+        $data = $this->consaludService->buscarIngresoCompleto($documento);
 
-        if (!$paciente) {
+        if (!$data) {
             return response()->json(['mensaje' => 'Paciente no encontrado'], 404);
         }
 
-        return response()->json(new PacienteResource($paciente));
+        $data['paciente']->load('examenes.tipoExamen.area');
+
+        return response()->json([
+            'paciente' => new PacienteResource($data['paciente']),
+            'ingreso' => $this->formatearIngreso($data['ingreso']),
+            'historia_status' => $data['historia_status'],
+        ]);
+    }
+
+    private function formatearIngreso(array $ingreso): array
+    {
+        $paciente = $ingreso['paciente'] ?? [];
+        $examenes = $ingreso['examenes'] ?? [];
+
+        return [
+            'id' => $ingreso['id'] ?? null,
+            'fecha_atencion' => $ingreso['fecha_atencion'] ?? null,
+            'observacion' => $ingreso['observacion'] ?? null,
+            'cliente' => [
+                'id' => $ingreso['cliente']['id'] ?? null,
+                'razon_social' => $ingreso['cliente']['razon_social'] ?? null,
+            ],
+            'sede' => [
+                'id' => $ingreso['sede']['id'] ?? null,
+                'nombre_sede' => $ingreso['sede']['nombre_sede'] ?? null,
+            ],
+            'empresa_labor' => [
+                'id' => $ingreso['empresa_labor']['id'] ?? null,
+                'nombre' => $ingreso['empresa_labor']['nombre'] ?? null,
+            ],
+            'tipo_evaluacion' => [
+                'id' => $ingreso['tipo_evaluacion']['id'] ?? null,
+                'nombre' => $ingreso['tipo_evaluacion']['nombre'] ?? null,
+            ],
+            'ocupacion' => [
+                'id' => $ingreso['ocupacion']['id'] ?? null,
+                'nombre' => $ingreso['ocupacion']['nombre'] ?? null,
+            ],
+            'examenes' => array_map(function ($ex) {
+                return [
+                    'id' => $ex['id'] ?? null,
+                    'examen_id' => $ex['examen_id'] ?? null,
+                    'estado' => $ex['estado'] ?? null,
+                    'examen' => [
+                        'id' => $ex['examen']['id'] ?? null,
+                        'cdg_examen' => $ex['examen']['cdg_examen'] ?? null,
+                        'nbr_examen' => $ex['examen']['nbr_examen'] ?? null,
+                        'categoria_exam_id' => $ex['examen']['categoria_exam_id'] ?? null,
+                    ],
+                ];
+            }, $examenes),
+        ];
     }
 }

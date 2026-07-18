@@ -60,12 +60,47 @@ class MaquinaEstadosTurnos
         return $turno->fresh();
     }
 
+    public function verificarPacienteDisponible(Turno $turno): void
+    {
+        if (!$turno->paciente_id) {
+            return;
+        }
+
+        $ocupado = Turno::turnoEnAtencionDePaciente($turno->paciente_id, $turno->id);
+
+        if ($ocupado && $ocupado->area_id !== $turno->area_id) {
+            throw ValidationException::withMessages([
+                'paciente' => "El paciente ya está siendo atendido en {$ocupado->area->nombre}",
+            ]);
+        }
+    }
+
     public function llamar(Turno $turno, ?string $realizadoPor = null): Turno
     {
-        Turno::where('area_id', $turno->area_id)
+        $this->verificarPacienteDisponible($turno);
+
+        $otrosLlamando = Turno::where('area_id', $turno->area_id)
             ->where('estado', EstadoTurno::Llamando)
             ->where('id', '!=', $turno->id)
-            ->update(['estado' => EstadoTurno::EnEspera]);
+            ->get();
+
+        foreach ($otrosLlamando as $otro) {
+            if ($otro->created_at->isToday()) {
+                $otro->update(['estado' => EstadoTurno::EnEspera]);
+            } else {
+                $otro->update([
+                    'estado' => EstadoTurno::Completado,
+                    'completado_en' => Carbon::now(),
+                ]);
+                TurnoLog::create([
+                    'turno_id' => $otro->id,
+                    'accion' => 'completado_auto',
+                    'estado_anterior' => EstadoTurno::Llamando->value,
+                    'estado_nuevo' => EstadoTurno::Completado->value,
+                    'realizado_por' => 'sistema',
+                ]);
+            }
+        }
 
         $turno->update([
             'contador_llamados' => $turno->contador_llamados + 1,
@@ -76,6 +111,8 @@ class MaquinaEstadosTurnos
 
     public function rellamar(Turno $turno, ?string $realizadoPor = null): Turno
     {
+        $this->verificarPacienteDisponible($turno);
+
         $turno->update([
             'contador_llamados' => $turno->contador_llamados + 1,
         ]);
@@ -90,16 +127,47 @@ class MaquinaEstadosTurnos
 
     public function ausente(Turno $turno, ?string $realizadoPor = null): Turno
     {
-        $turno->update([
-            'contador_llamados' => 0,
-            'estado' => EstadoTurno::EnEspera,
-            'created_at' => Carbon::now(),
-        ]);
+        $estadoAnterior = $turno->estado->value;
+
+        $ausenciasPrevias = TurnoLog::where('turno_id', $turno->id)
+            ->where('accion', 'ausente_a_cola')
+            ->count();
+
+        $posicionDestino = match ($ausenciasPrevias) {
+            0 => 3,
+            1 => 4,
+            2 => 5,
+            default => null,
+        };
+
+        $turno->contador_llamados = 0;
+        $turno->estado = EstadoTurno::EnEspera;
+
+        if ($posicionDestino === null) {
+            $turno->created_at = Carbon::now();
+        } else {
+            $cola = Turno::where('area_id', $turno->area_id)
+                ->where('estado', EstadoTurno::EnEspera)
+                ->where('id', '!=', $turno->id)
+                ->orderBy('created_at')
+                ->get();
+
+            $indiceReferencia = $posicionDestino - 2;
+
+            if ($cola->count() > $indiceReferencia) {
+                $referencia = $cola[$indiceReferencia];
+                $turno->created_at = Carbon::parse($referencia->created_at)->addSecond();
+            } else {
+                $turno->created_at = Carbon::now();
+            }
+        }
+
+        $turno->save();
 
         TurnoLog::create([
             'turno_id' => $turno->id,
             'accion' => 'ausente_a_cola',
-            'estado_anterior' => $turno->getOriginal('estado'),
+            'estado_anterior' => $estadoAnterior,
             'estado_nuevo' => EstadoTurno::EnEspera->value,
             'realizado_por' => $realizadoPor,
         ]);

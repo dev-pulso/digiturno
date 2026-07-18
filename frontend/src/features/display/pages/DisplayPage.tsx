@@ -8,6 +8,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { ChevronLeftIcon } from '@hugeicons/core-free-icons';
 import Pusher from 'pusher-js';
 import React from 'react';
+import Logo from '@/assets/LOGO CONSALUD L.png';
 
 interface AreaDisplay {
   id: number;
@@ -60,9 +61,9 @@ export function DisplayPage() {
   useEffect(() => {
     if (areas.length === 0) return;
 
-    const pusher = new Pusher('6yz4asovj9ziqpsxwj32', {
-      wsHost: 'localhost',
-      wsPort: 8081,
+    const pusher = new Pusher(import.meta.env.VITE_REVERB_APP_KEY ?? 'digiturno-key', {
+      wsHost: import.meta.env.VITE_REVERB_HOST ?? 'localhost',
+      wsPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8081),
       cluster: 'mt1',
       forceTLS: false,
       enabledTransports: ['ws'],
@@ -116,7 +117,7 @@ export function DisplayPage() {
   }, [currentVideoIdx, currentVideo]);
 
   const handleVideoEnded = () => {
-    if (videos.length > 1) setCurrentVideoIdx(prev => (prev + 1) % videos.length);
+    setCurrentVideoIdx(prev => (prev + 1) % videos.length);
   };
 
   // Historial unificado
@@ -130,20 +131,23 @@ export function DisplayPage() {
   const heroTurno = hero?.turno;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#020408]">
-      <header className="flex items-center justify-between px-10 py-5 border-b border-white/[0.05] shrink-0">
+    <div className="min-h-screen flex flex-col bg-background">
+      <header className="flex items-center justify-between px-10 py-5 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-[34px] h-[34px] bg-gradient-to-br from-primary-700 to-indigo-500 rounded-lg flex items-center justify-center text-base shadow-sm">🏥</div>
-          <span className="font-display font-extrabold text-base">DIGITURNO</span>
+          <img src={Logo} className="w-24 h-24" style={{ width: '50px', height: '50px' }} />
+          <div>
+            <div className="font-display font-extrabold text-xl tracking-tight">CONSALUD LABORAL</div>
+            <div className="text-[11px] text-muted-foreground tracking-widest uppercase mt-0.5">Sistema de Turnos</div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-3 py-1 text-[11px] text-emerald-400 font-mono">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />EN VIVO
           </div>
-          <span className="font-mono text-[10px] text-white/20 bg-white/5 px-2 py-0.5 rounded">WS:{wsEventos}</span>
+          <span className="font-mono text-[10px] text-foreground/20 bg-foreground/5 px-2 py-0.5 rounded">WS:{wsEventos}</span>
           {error && <span className="text-[10px] text-red-400">{error}</span>}
-          <span className="font-mono text-xs text-white/40">{formatted}</span>
-          <button onClick={() => navigate('/')} className="w-[34px] h-[34px] rounded-lg border border-white/10 flex items-center justify-center text-white/40 hover:text-white/70 transition-colors">
+          <span className="font-mono text-xs text-foreground/40">{formatted}</span>
+          <button onClick={() => navigate(-1)} className="w-[34px] h-[34px] rounded-lg border border-foreground/10 flex items-center justify-center text-foreground/40 hover:text-foreground/70 transition-colors">
             <HugeiconsIcon icon={ChevronLeftIcon} className="h-4 w-4" />
           </button>
         </div>
@@ -164,13 +168,13 @@ export function DisplayPage() {
                   <p className="text-[clamp(16px,2vw,22px)] font-medium opacity-60 mb-2" style={{ animation: 'fadeSlideIn 0.6s ease-out 0.3s both' }}>{heroTurno.examen_paciente.tipo_examen.nombre}</p>
                 )}
                 <div className="w-16 h-0.5 mx-auto my-3 rounded-full" style={{ background: heroArea.color }} />
-                <p className="font-mono text-[clamp(13px,1.5vw,18px)] opacity-50 tracking-widest uppercase" style={{ animation: 'fadeSlideIn 0.6s ease-out 0.4s both' }}>Llamado {heroTurno.contador_llamados || 1} vez{heroTurno.contador_llamados !== 1 ? 'es' : ''}</p>
+                <p className="font-mono text-[clamp(13px,1.5vw,18px)] opacity-50 tracking-widest uppercase" style={{ animation: 'fadeSlideIn 0.6s ease-out 0.4s both' }}>Llamado {heroTurno.contador_llamados || 1}  {heroTurno.contador_llamados !== 1 ? 'veces' : 'vez'}</p>
               </div>
             ) : (
               <div className="text-center">
-                <p className="font-display font-extrabold leading-none tracking-tight text-white/10" style={{ fontSize: 'clamp(72px, 12vw, 140px)' }}>— — —</p>
-                <p className="text-[clamp(20px,2.5vw,32px)] font-medium text-white/30 mt-6">Esperando llamado...</p>
-                {areas.length === 0 && !error && <p className="text-xs text-white/20 mt-2">Cargando datos...</p>}
+                <p className="font-display font-extrabold leading-none tracking-tight text-foreground/10" style={{ fontSize: 'clamp(72px, 12vw, 140px)' }}>— — —</p>
+                <p className="text-[clamp(20px,2.5vw,32px)] font-medium text-foreground/30 mt-6">Esperando llamado...</p>
+                {areas.length === 0 && !error && <p className="text-xs text-foreground/20 mt-2">Cargando datos...</p>}
                 {areas.length === 0 && error && <p className="text-xs text-red-400 mt-2">{error}</p>}
               </div>
             )}
@@ -183,9 +187,9 @@ export function DisplayPage() {
                   style={{ borderColor: a.actual ? `${a.color}44` : 'rgba(255,255,255,0.06)', background: a.actual ? `${a.color}0a` : 'rgba(255,255,255,0.02)' }}>
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs font-mono shrink-0" style={{ background: a.color }}>{a.prefijo}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-mono text-[10px] text-white/50 truncate">{a.nombre}</p>
+                    <p className="font-mono text-[10px] text-foreground/50 truncate">{a.nombre}</p>
                     {a.actual ? <p className="font-mono text-sm font-bold" style={{ color: a.color }}>{a.actual.numero_turno}</p>
-                    : <p className="font-mono text-[11px] text-white/30">{a.en_espera || 0} en espera</p>}
+                    : <p className="font-mono text-[11px] text-foreground/30">{a.en_espera || 0} en espera</p>}
                   </div>
                 </div>
               ))}
@@ -193,19 +197,19 @@ export function DisplayPage() {
           )}
         </div>
 
-        <div className="flex-1 flex flex-col bg-black/30 border-l border-white/[0.05]">
+        <div className="flex-1 flex flex-col bg-muted border-l border-border">
           {currentVideo ? (
             <div className="flex-1 flex items-center justify-center p-8">
-              <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl border border-white/[0.06]">
-                <video ref={videoRef} className="w-full h-full object-contain bg-black" autoPlay muted playsInline onEnded={handleVideoEnded}
-                  onError={() => { if (videos.length > 1) setCurrentVideoIdx(prev => (prev + 1) % videos.length); }}>
+              <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl border border-foreground/10">
+                <video ref={videoRef} className="w-full h-full object-contain bg-black" autoPlay muted playsInline loop={videos.length === 1} onEnded={handleVideoEnded}
+                  onError={() => { setCurrentVideoIdx(prev => (prev + 1) % videos.length); }}>
                   <source src={currentVideo.url} type={currentVideo.tipo_mime} />
                 </video>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-white/20">
-              <div className="text-center"><div className="text-6xl mb-4">🎬</div><p className="font-display font-bold text-xl text-white/30 mb-2">Sin videos</p><p className="text-sm">Agrega videos desde el panel de administración</p></div>
+            <div className="flex-1 flex items-center justify-center text-foreground/20">
+              <div className="text-center"><div className="text-6xl mb-4">🎬</div><p className="font-display font-bold text-xl text-foreground/30 mb-2">Sin videos</p><p className="text-sm">Agrega videos desde el panel de administración</p></div>
             </div>
           )}
           {videos.length > 0 && (
@@ -219,12 +223,12 @@ export function DisplayPage() {
         </div>
       </div>
 
-      <footer className="border-t border-white/[0.05] px-10 py-5 flex items-center gap-2 overflow-x-auto shrink-0">
-        <span className="font-mono text-[11px] tracking-widest uppercase text-white/20 whitespace-nowrap mr-2">Últimos:</span>
+      <footer className="border-t border-border px-10 py-5 flex items-center gap-2 overflow-x-auto shrink-0">
+        <span className="font-mono text-[11px] tracking-widest uppercase text-foreground/20 whitespace-nowrap mr-2">Últimos:</span>
         {historialUnificado.length > 0 ? (
           historialUnificado.map((h: any, i: number) => (
             <React.Fragment key={`${h.id}-${i}`}>
-              {i > 0 && <span className="text-white/10 text-lg">·</span>}
+              {i > 0 && <span className="text-foreground/10 text-lg">·</span>}
               <span className="font-mono text-sm font-medium px-3 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-2"
                 style={{ background: `${h.area.color}10`, border: `1px solid ${h.area.color}20`, opacity: 1 - i * 0.1 }}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: h.area.color }} />{h.numero_turno}
@@ -232,7 +236,7 @@ export function DisplayPage() {
             </React.Fragment>
           ))
         ) : (
-          <span className="font-mono text-xs text-white/20">Sin historial</span>
+          <span className="font-mono text-xs text-foreground/20">Sin historial</span>
         )}
       </footer>
 

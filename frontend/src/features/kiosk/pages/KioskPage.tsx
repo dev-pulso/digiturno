@@ -117,21 +117,21 @@ export function KioskPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080c14] flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Touch-optimized header */}
-      <header className="flex items-center justify-between px-8 py-6 border-b border-white/10">
+      <header className="flex items-center justify-between px-8 py-6 border-b border-foreground/10">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/')}
-            className="h-12 w-12 text-text-dim hover:text-text"
+            onClick={() => navigate(-1)}
+            className="h-12 w-12 text-muted-foreground hover:text-foreground"
           >
             <HugeiconsIcon icon={ChevronLeftIcon} className="h-6 w-6" />
           </Button>
           <div>
             <h1 className="font-display font-bold text-xl">Kiosco de Autoservicio</h1>
-            <p className="text-sm text-text-dim">Obtén tu turno rápido</p>
+            <p className="text-sm text-muted-foreground">Obtén tu turno rápido</p>
           </div>
         </div>
         <div className="w-14 h-14 bg-gradient-to-br from-primary-700 to-indigo-500 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-primary-700/30">
@@ -141,15 +141,15 @@ export function KioskPage() {
 
       <main className="flex-1 flex items-center justify-center p-8">
         {state.step === 'document' && (
-          <Card className="w-full max-w-md p-10 bg-surface border-border">
+          <Card className="w-full max-w-md p-10 bg-card border-border">
             <div className="text-center mb-8">
               <h2 className="font-display font-bold text-2xl mb-2">Bienvenido</h2>
-              <p className="text-text-dim text-sm">Ingresa tu documento para obtener un turno</p>
+              <p className="text-muted-foreground text-sm">Ingresa tu documento para obtener un turno</p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-text-mid mb-2 block">Tipo de Documento</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Tipo de Documento</label>
                 <div className="flex gap-3">
                   {['CC', 'CE', 'NIT'].map((type) => (
                     <Button
@@ -159,8 +159,8 @@ export function KioskPage() {
                       onClick={() => setState(prev => ({ ...prev, documentType: type }))}
                       className={`flex-1 h-14 text-base ${
                         state.documentType === type
-                          ? 'bg-primary-700 text-white border-primary-700'
-                          : 'border-border text-text-mid'
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-muted-foreground'
                       }`}
                     >
                       {type}
@@ -170,13 +170,13 @@ export function KioskPage() {
               </div>
 
               <div>
-                <label className="text-sm text-text-mid mb-2 block">Número de Documento</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Número de Documento</label>
                 <Input
                   ref={docInputRef}
                   value={state.documentNumber}
                   onChange={(e) => setState(prev => ({ ...prev, documentNumber: e.target.value }))}
                   placeholder="12345678"
-                  className="h-14 text-lg bg-[#080c14] border-border text-center tracking-widest"
+                  className="h-14 text-lg bg-background border-border text-center tracking-widest"
                   maxLength={15}
                   inputMode="numeric"
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchDoc()}
@@ -185,7 +185,7 @@ export function KioskPage() {
 
               <Button
                 size="lg"
-                className="w-full h-14 text-base bg-primary-700 hover:bg-primary-600 text-white mt-2"
+                className="w-full h-14 text-base bg-primary hover:bg-primary/90 text-primary-foreground mt-2"
                 onClick={handleSearchDoc}
                 disabled={loading || !state.documentNumber.trim()}
               >
@@ -194,19 +194,19 @@ export function KioskPage() {
               </Button>
             </div>
 
-            <p className="text-center text-xs text-text-dim mt-6">
+            <p className="text-center text-xs text-muted-foreground mt-6">
               Al usar este kiosco aceptas nuestros términos y condiciones
             </p>
           </Card>
         )}
 
         {state.step === 'confirm' && (
-          <Card className="w-full max-w-md p-10 bg-surface border-border">
+          <Card className="w-full max-w-md p-10 bg-card border-border">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setState(prev => ({ ...prev, step: 'document' }))}
-              className="text-text-dim mb-4 -ml-2"
+              className="text-muted-foreground mb-4 -ml-2"
             >
               <HugeiconsIcon icon={ArrowLeft01Icon} className="h-4 w-4 mr-1" /> Volver
             </Button>
@@ -216,7 +216,7 @@ export function KioskPage() {
               <h2 className="font-display font-bold text-2xl mb-2">
                 {state.patient ? '¿Eres tú?' : 'Regístrate'}
               </h2>
-              <p className="text-text-dim text-sm">
+              <p className="text-muted-foreground text-sm">
                 {state.patient
                   ? 'Confirma tu identidad para continuar'
                   : 'No encontramos tu documento. Regístrate para continuar.'}
@@ -225,9 +225,9 @@ export function KioskPage() {
 
             {state.patient ? (
               <div className="space-y-6">
-                <div className="bg-[#080c14] border border-border rounded-xl p-5 text-center">
+                <div className="bg-background border border-border rounded-xl p-5 text-center">
                   <p className="font-display font-bold text-xl">{state.patient.nombre_completo}</p>
-                  <p className="text-text-dim text-sm mt-1">
+                  <p className="text-muted-foreground text-sm mt-1">
                     {state.patient.tipo_documento} {state.patient.numero_documento}
                   </p>
                 </div>
@@ -236,14 +236,14 @@ export function KioskPage() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="flex-1 h-14 text-base border-border text-text-dim"
+                    className="flex-1 h-14 text-base border-border text-muted-foreground"
                     onClick={() => setState(prev => ({ ...prev, step: 'document' }))}
                   >
                     No soy yo
                   </Button>
                   <Button
                     size="lg"
-                    className="flex-1 h-14 text-base bg-primary-700 hover:bg-primary-600 text-white"
+                    className="flex-1 h-14 text-base bg-primary hover:bg-primary/90 text-primary-foreground"
                     onClick={() => setState(prev => ({ ...prev, step: 'area' }))}
                   >
                     Sí, soy yo
@@ -254,12 +254,12 @@ export function KioskPage() {
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-text-mid mb-2 block">Nombre Completo</label>
+                  <label className="text-sm text-muted-foreground mb-2 block">Nombre Completo</label>
                   <Input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Ej: Juan Pérez García"
-                    className="h-14 text-base bg-[#080c14] border-border"
+                    className="h-14 text-base bg-background border-border"
                     maxLength={50}
                     autoFocus
                     onKeyDown={(e) => e.key === 'Enter' && handleRegisterDoc()}
@@ -268,7 +268,7 @@ export function KioskPage() {
 
                 <Button
                   size="lg"
-                  className="w-full h-14 text-base bg-primary-700 hover:bg-primary-600 text-white"
+                  className="w-full h-14 text-base bg-primary hover:bg-primary/90 text-primary-foreground"
                   onClick={handleRegisterDoc}
                   disabled={loading || !newName.trim()}
                 >
@@ -280,12 +280,12 @@ export function KioskPage() {
         )}
 
         {state.step === 'area' && (
-          <Card className="w-full max-w-md p-10 bg-surface border-border">
+          <Card className="w-full max-w-md p-10 bg-card border-border">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setState(prev => ({ ...prev, step: 'confirm' }))}
-              className="text-text-dim mb-4 -ml-2"
+              className="text-muted-foreground mb-4 -ml-2"
             >
               <HugeiconsIcon icon={ArrowLeft01Icon} className="h-4 w-4 mr-1" /> Volver
             </Button>
@@ -293,7 +293,7 @@ export function KioskPage() {
             <div className="text-center mb-6">
               <div className="text-5xl mb-4">🏥</div>
               <h2 className="font-display font-bold text-2xl mb-2">Selecciona un Área</h2>
-              <p className="text-text-dim text-sm">
+              <p className="text-muted-foreground text-sm">
                 {state.patient?.nombre_completo}, elige el servicio que necesitas
               </p>
             </div>
@@ -308,7 +308,7 @@ export function KioskPage() {
                   className={`w-full h-16 text-base justify-start px-5 ${
                     state.areaId === area.id
                       ? 'text-white font-bold'
-                      : 'border-border text-text'
+                      : 'border-border text-foreground'
                   }`}
                   style={state.areaId === area.id ? { background: area.color, borderColor: area.color } : {}}
                 >
@@ -321,7 +321,7 @@ export function KioskPage() {
 
             <Button
               size="lg"
-              className="w-full h-14 text-base bg-primary-700 hover:bg-primary-600 text-white mt-6"
+              className="w-full h-14 text-base bg-primary hover:bg-primary/90 text-primary-foreground mt-6"
               onClick={handleCreateTurn}
               disabled={loading || !state.areaId}
             >
@@ -332,15 +332,15 @@ export function KioskPage() {
         )}
 
         {state.step === 'done' && state.turn && (
-          <Card className="w-full max-w-md p-10 bg-surface border-border text-center">
-            <div className="text-6xl mb-4 text-emerald-400">
+          <Card className="w-full max-w-md p-10 bg-card border-border text-center">
+            <div className="text-6xl mb-4 text-emerald-700 dark:text-emerald-400">
               <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-16 w-16 mx-auto" />
             </div>
             <h2 className="font-display font-bold text-2xl mb-2">¡Turno Asignado!</h2>
-            <p className="text-text-dim text-sm mb-8">Tu turno ha sido generado exitosamente</p>
+            <p className="text-muted-foreground text-sm mb-8">Tu turno ha sido generado exitosamente</p>
 
-            <div className="bg-[#080c14] border border-border rounded-2xl p-8 mb-8">
-              <p className="font-mono text-xs text-text-dim uppercase tracking-widest mb-4">Tu turno</p>
+            <div className="bg-background border border-border rounded-2xl p-8 mb-8">
+              <p className="font-mono text-xs text-muted-foreground uppercase tracking-widest mb-4">Tu turno</p>
               <p
                 className="font-display font-extrabold text-6xl tracking-tight mb-4"
                 style={{ color: areas.find(a => a.id === state.turn!.area_id)?.color || '#044B84' }}
@@ -348,7 +348,7 @@ export function KioskPage() {
                 {state.turn.numero_turno}
               </p>
               <p className="text-lg font-medium">{state.turn.nombre_paciente}</p>
-              <p className="text-sm text-text-dim mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 {areas.find(a => a.id === state.turn!.area_id)?.nombre || ''}
               </p>
             </div>
@@ -356,7 +356,7 @@ export function KioskPage() {
             <div className="space-y-3">
               <Button
                 size="lg"
-                className="w-full h-14 text-base bg-primary-700 hover:bg-primary-600 text-white"
+                className="w-full h-14 text-base bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={resetKiosk}
               >
                 Atender Siguiente Paciente
@@ -364,8 +364,8 @@ export function KioskPage() {
               <Button
                 variant="outline"
                 size="lg"
-                className="w-full h-14 text-base border-border text-text-dim"
-                onClick={() => navigate('/')}
+                className="w-full h-14 text-base border-border text-muted-foreground"
+                onClick={() => navigate(-1)}
               >
                 Volver al Inicio
               </Button>
@@ -376,8 +376,8 @@ export function KioskPage() {
 
       {/* Footer timer for auto-reset on idle */}
       {state.step !== 'document' && state.step !== 'done' && (
-        <footer className="text-center py-4 text-xs text-text-dim border-t border-white/5">
-          <button onClick={resetKiosk} className="hover:text-text transition-colors">
+        <footer className="text-center py-4 text-xs text-muted-foreground border-t border-foreground/5">
+          <button onClick={resetKiosk} className="hover:text-foreground transition-colors">
             ← Inicio
           </button>
         </footer>

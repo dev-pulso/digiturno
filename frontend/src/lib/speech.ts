@@ -1,30 +1,44 @@
-import { api } from './api-client';
-
 type DatosAnuncio = {
-  numero_turno: string | number;
-  nombre_paciente: string;
+  numero_turno?: string | number;
+  nombre_paciente?: string;
   area_nombre?: string;
+  prefijo?: string;
 };
 
-function hablarNavegador(texto: string): void {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(texto);
+function buildText(data: DatosAnuncio): string {
+  const partes: string[] = [];
+  if (data.nombre_paciente) partes.push(data.nombre_paciente);
+  if (data.area_nombre) partes.push(data.area_nombre);
+  return partes.join(', ');
+}
+
+function findVoice(): SpeechSynthesisVoice | undefined {
   const voices = window.speechSynthesis.getVoices();
-  const esVoice = voices.find(v => v.lang.startsWith('es'));
-  if (esVoice) utterance.voice = esVoice;
-  utterance.lang = 'es-MX';
-  utterance.rate = 1.1;
-  utterance.volume = 1;
-  window.speechSynthesis.speak(utterance);
+  return voices.find(v => v.lang === 'es-US')
+    || voices.find(v => v.lang.startsWith('es'))
+    || undefined;
 }
 
 export function anunciarTurno(data: DatosAnuncio): void {
-  const partes = [`Turno ${data.numero_turno}`];
-  if (data.nombre_paciente) partes.push(data.nombre_paciente);
-  if (data.area_nombre) partes.push(data.area_nombre);
-  const texto = partes.join(', ');
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const texto = buildText(data);
+  if (!texto) return;
 
-  hablarNavegador(texto);
-  api.post('/tts/anunciar', { texto }).catch(() => {});
+  window.speechSynthesis.cancel();
+  setTimeout(() => {
+    const utterance = new SpeechSynthesisUtterance(texto);
+    const voice = findVoice();
+    if (voice) utterance.voice = voice;
+    utterance.lang = 'es-US';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  }, 80);
+}
+
+export function cancelarAnuncio(): void {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
 }

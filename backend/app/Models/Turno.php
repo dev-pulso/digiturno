@@ -89,4 +89,13 @@ class Turno extends Model
     {
         return $query->whereDate('created_at', today());
     }
+
+    public static function turnoEnAtencionDePaciente(int $pacienteId, ?int $excluirTurnoId = null): ?self
+    {
+        return self::where('paciente_id', $pacienteId)
+            ->where('estado', EstadoTurno::Llamando)
+            ->whereDate('created_at', today())
+            ->when($excluirTurnoId, fn ($query) => $query->where('id', '!=', $excluirTurnoId))
+            ->first();
+    }
 }
