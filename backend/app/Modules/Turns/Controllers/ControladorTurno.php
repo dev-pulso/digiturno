@@ -20,6 +20,7 @@ use App\Services\ServicioExamenesPacientes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 
 class ControladorTurno extends Controller
 {
@@ -55,27 +56,32 @@ class ControladorTurno extends Controller
     public function store(CrearTurnoRequest $request): JsonResponse
     {
         $area = Area::findOrFail($request->area_id);
-        $numeroTurno = $this->generadorNumero->generar($area);
 
-        $turno = Turno::create([
-            'numero_turno' => $numeroTurno,
-            'area_id' => $area->id,
-            'paciente_id' => $request->paciente_id,
-            'examen_paciente_id' => $request->examen_paciente_id,
-            'nombre_paciente' => $request->nombre_paciente,
-            'estado' => EstadoTurno::EnEspera,
-            'origen' => OrigenTurno::tryFrom($request->origen ?? 'recepcion') ?? OrigenTurno::Recepcion,
-        ]);
+        $turno = DB::transaction(function () use ($request, $area) {
+            $numeroTurno = $this->generadorNumero->generar($area);
 
-        TurnoLog::create([
-            'turno_id' => $turno->id,
-            'accion' => 'creado',
-            'estado_nuevo' => EstadoTurno::EnEspera->value,
-        ]);
+            $turno = Turno::create([
+                'numero_turno' => $numeroTurno,
+                'area_id' => $area->id,
+                'paciente_id' => $request->paciente_id,
+                'examen_paciente_id' => $request->examen_paciente_id,
+                'nombre_paciente' => $request->nombre_paciente,
+                'estado' => EstadoTurno::EnEspera,
+                'origen' => OrigenTurno::tryFrom($request->origen ?? 'recepcion') ?? OrigenTurno::Recepcion,
+            ]);
+
+            TurnoLog::create([
+                'turno_id' => $turno->id,
+                'accion' => 'creado',
+                'estado_nuevo' => EstadoTurno::EnEspera->value,
+            ]);
+
+            return $turno;
+        });
 
         $turno->load('area');
 
-        try { broadcast(new TurnoCreado($turno)); } catch (\Exception $e) {}
+        try { broadcast(new TurnoCreado($turno)); } catch (\Exception $e) { \Illuminate\Support\Facades\Log::warning("Broadcast fallido: " . $e->getMessage()); }
 
         return response()->json(new TurnoResource($turno), 201);
     }
@@ -94,7 +100,7 @@ class ControladorTurno extends Controller
         );
 
         $turno->load('area', 'examenPaciente.tipoExamen');
-        try { broadcast(new TurnoLlamado($turno)); } catch (\Exception $e) {}
+        try { broadcast(new TurnoLlamado($turno)); } catch (\Exception $e) { \Illuminate\Support\Facades\Log::warning("Broadcast fallido: " . $e->getMessage()); }
 
         return response()->json(new TurnoResource($turno));
     }
@@ -107,7 +113,7 @@ class ControladorTurno extends Controller
         );
 
         $turno->load('area', 'examenPaciente.tipoExamen');
-        try { broadcast(new TurnoRellamado($turno)); } catch (\Exception $e) {}
+        try { broadcast(new TurnoRellamado($turno)); } catch (\Exception $e) { \Illuminate\Support\Facades\Log::warning("Broadcast fallido: " . $e->getMessage()); }
 
         return response()->json(new TurnoResource($turno));
     }
@@ -119,7 +125,7 @@ class ControladorTurno extends Controller
 
         $this->servicioExamenes->completarYAvanzar($turno);
 
-        try { broadcast(new TurnoCompletado($turno)); } catch (\Exception $e) {}
+        try { broadcast(new TurnoCompletado($turno)); } catch (\Exception $e) { \Illuminate\Support\Facades\Log::warning("Broadcast fallido: " . $e->getMessage()); }
 
         return response()->json(new TurnoResource($turno));
     }
@@ -129,7 +135,7 @@ class ControladorTurno extends Controller
         $turno = $this->maquinaEstados->ausente($turno);
         $turno->load('area', 'examenPaciente.tipoExamen');
 
-        try { broadcast(new TurnoAusente($turno)); } catch (\Exception $e) {}
+        try { broadcast(new TurnoAusente($turno)); } catch (\Exception $e) { \Illuminate\Support\Facades\Log::warning("Broadcast fallido: " . $e->getMessage()); }
 
         return response()->json(new TurnoResource($turno));
     }
@@ -172,30 +178,39 @@ class ControladorTurno extends Controller
 
     public function displayTodas(): JsonResponse
     {
-        $areas = Area::where('activo', true)
-            ->orderBy('id')
-            ->get();
+        $hoy = [today()->startOfDay(), today()->endOfDay()];
 
-        $resultado = $areas->map(function ($area) {
-            $actual = Turno::with('examenPaciente.tipoExamen')
-                ->where('area_id', $area->id)
-                ->where('estado', EstadoTurno::Llamando)
-                ->whereDate('created_at', today())
-                ->latest('llamado_en')
-                ->first();
+        $areas = Area::where('activo', true)->orderBy('id')->get();
+        $areaIds = $areas->pluck('id');
 
-            $historial = Turno::with('examenPaciente.tipoExamen')
-                ->where('area_id', $area->id)
-                ->whereIn('estado', [EstadoTurno::Completado, EstadoTurno::Ausente])
-                ->whereDate('created_at', today())
-                ->latest('updated_at')
-                ->take(3)
-                ->get();
+        // ponytail: 3 queries agrupadas en vez de 3 por área (N+1)
+        $actuales = Turno::with('examenPaciente.tipoExamen')
+            ->whereIn('area_id', $areaIds)
+            ->where('estado', EstadoTurno::Llamando)
+            ->whereBetween('created_at', $hoy)
+            ->orderBy('llamado_en', 'desc')
+            ->get()
+            ->unique('area_id')
+            ->keyBy('area_id');
 
-            $enEspera = Turno::where('area_id', $area->id)
-                ->where('estado', EstadoTurno::EnEspera)
-                ->whereDate('created_at', today())
-                ->count();
+        $historiales = Turno::with('examenPaciente.tipoExamen')
+            ->whereIn('area_id', $areaIds)
+            ->whereIn('estado', [EstadoTurno::Completado, EstadoTurno::Ausente])
+            ->whereBetween('created_at', $hoy)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->groupBy('area_id');
+
+        $esperas = Turno::whereIn('area_id', $areaIds)
+            ->where('estado', EstadoTurno::EnEspera)
+            ->whereBetween('created_at', $hoy)
+            ->selectRaw('area_id, count(*) as total')
+            ->groupBy('area_id')
+            ->pluck('total', 'area_id');
+
+        $resultado = $areas->map(function ($area) use ($actuales, $historiales, $esperas) {
+            $actual = $actuales[$area->id] ?? null;
+            $historial = ($historiales[$area->id] ?? collect())->take(3);
 
             return [
                 'id' => $area->id,
@@ -204,7 +219,7 @@ class ControladorTurno extends Controller
                 'prefijo' => $area->prefijo,
                 'color' => $area->color,
                 'actual' => $actual ? new TurnoResource($actual) : null,
-                'en_espera' => $enEspera,
+                'en_espera' => $esperas[$area->id] ?? 0,
                 'historial' => TurnoResource::collection($historial),
             ];
         });

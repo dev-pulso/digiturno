@@ -12,6 +12,7 @@ use App\Modules\Turns\Resources\TurnoResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 
 class ControladorConsultorio extends Controller
 {
@@ -44,36 +45,42 @@ class ControladorConsultorio extends Controller
 
     public function llamarSiguiente(Request $request, Area $area): JsonResponse
     {
-        $cola = Turno::where('area_id', $area->id)
-            ->where('estado', EstadoTurno::EnEspera)
-            ->whereDate('created_at', today())
-            ->orderBy('created_at')
-            ->get();
+        // ponytail: transacción + lock de fila para que dos médicos no llamen el mismo turno
+        $turno = DB::transaction(function () use ($request, $area) {
+            $cola = Turno::where('area_id', $area->id)
+                ->where('estado', EstadoTurno::EnEspera)
+                ->whereDate('created_at', today())
+                ->orderBy('created_at')
+                ->lockForUpdate()
+                ->get();
 
-        if ($cola->isEmpty()) {
-            return response()->json(['mensaje' => 'No hay turnos en espera'], 404);
-        }
+            foreach ($cola as $siguiente) {
+                $ocupado = Turno::turnoEnAtencionDePaciente($siguiente->paciente_id, $siguiente->id);
 
-        foreach ($cola as $siguiente) {
-            $ocupado = Turno::turnoEnAtencionDePaciente($siguiente->paciente_id, $siguiente->id);
+                if ($ocupado && $ocupado->area_id !== $siguiente->area_id) {
+                    continue;
+                }
 
-            if ($ocupado && $ocupado->area_id !== $siguiente->area_id) {
-                continue;
+                return $this->maquinaEstados->llamar(
+                    $siguiente,
+                    $request->input('llamado_por')
+                );
             }
 
-            $turno = $this->maquinaEstados->llamar(
-                $siguiente,
-                $request->input('llamado_por')
-            );
+            return null;
+        });
 
-            $turno->load('area', 'examenPaciente.tipoExamen');
-
-            try { broadcast(new TurnoLlamado($turno)); } catch (\Exception $e) {}
-
-            return response()->json(new TurnoResource($turno));
+        if (!$turno) {
+            return response()->json(['mensaje' => 'No hay pacientes disponibles en este momento'], 404);
         }
 
-        return response()->json(['mensaje' => 'No hay pacientes disponibles en este momento'], 404);
+        $turno->load('area', 'examenPaciente.tipoExamen');
+
+        try { broadcast(new TurnoLlamado($turno)); } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Broadcast TurnoLlamado fallido: ' . $e->getMessage());
+        }
+
+        return response()->json(new TurnoResource($turno));
     }
 
     public function actual(Area $area): JsonResponse

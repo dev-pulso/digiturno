@@ -13,6 +13,9 @@ class ConsaludService
     private string $user;
     private string $password;
 
+    /** Último error de red/auth para mensajes al cliente (no se cachea). */
+    private ?string $ultimoError = null;
+
     public function __construct()
     {
         $this->baseUrl = rtrim(env('API_URL_CONSALUD', ''), '/');
@@ -20,23 +23,31 @@ class ConsaludService
         $this->password = env('CONSALUD_API_PASSWORD', '');
     }
 
+    public function ultimoError(): ?string
+    {
+        return $this->ultimoError;
+    }
+
     public function buscarPacientes(string $busqueda): array
     {
+        $this->ultimoError = null;
         $token = $this->obtenerToken();
         if (!$token) {
+            $this->ultimoError = $this->ultimoError ?? 'No se pudo autenticar con Consalud';
             Log::warning('ConsaludService: no se pudo obtener token');
             return [];
         }
 
         try {
-            $response = Http::withToken($token)
-                ->withoutVerifying()
+            $response = $this->http()
+                ->withToken($token)
                 ->timeout(30)
                 ->get($this->baseUrl . '/historias/ingresos/gestion', [
                     'busqueda' => $busqueda,
                 ]);
 
             if (!$response->successful()) {
+                $this->ultimoError = 'Consalud respondió con error (HTTP ' . $response->status() . ')';
                 Log::warning('ConsaludService: respuesta no exitosa', [
                     'status' => $response->status(),
                     'busqueda' => $busqueda,
@@ -44,8 +55,10 @@ class ConsaludService
                 return [];
             }
 
-            return $response->json() ?? [];
+            $data = $this->jsonBody($response);
+            return is_array($data) ? $data : [];
         } catch (\Exception $e) {
+            $this->ultimoError = 'Consalud no disponible: ' . $e->getMessage();
             Log::warning('ConsaludService: error al buscar pacientes: ' . $e->getMessage());
             return [];
         }
@@ -88,6 +101,7 @@ class ConsaludService
             'paciente' => $paciente,
             'ingreso' => $ingreso,
             'historia_status' => $historiaStatus[$ingreso['id']] ?? null,
+            'fuente' => 'consalud',
         ];
     }
 
@@ -103,8 +117,8 @@ class ConsaludService
         }
 
         try {
-            $response = Http::withToken($token)
-                ->withoutVerifying()
+            $response = $this->http()
+                ->withToken($token)
                 ->timeout(30)
                 ->get($this->baseUrl . '/historias/ingresos/historia-status', [
                     'ids' => $ingresoIds,
@@ -114,11 +128,19 @@ class ConsaludService
                 return [];
             }
 
-            return $response->json('data') ?? [];
+            return $this->jsonBody($response)['data'] ?? [];
         } catch (\Exception $e) {
             Log::warning('ConsaludService: error en historiaStatus: ' . $e->getMessage());
             return [];
         }
+    }
+
+    /** Quita BOM UTF-8 y decodifica JSON de respuestas Consalud. */
+    private function jsonBody(\Illuminate\Http\Client\Response $response): array
+    {
+        $raw = preg_replace('/^\xEF\xBB\xBF/', '', $response->body()) ?? '';
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : [];
     }
 
     private function sincronizarPaciente(array $data): Paciente
@@ -166,31 +188,53 @@ class ConsaludService
         return $paciente;
     }
 
+    // ponytail: env devuelve string; filter_var convierte "false" bien
+    private function http(): \Illuminate\Http\Client\PendingRequest
+    {
+        $request = Http::acceptJson();
+        $verifySsl = filter_var(env('CONSALUD_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN);
+        if (!$verifySsl) {
+            $request = $request->withoutVerifying();
+        }
+        return $request;
+    }
+
     private function obtenerToken(): ?string
     {
         $cacheKey = 'consalud_api_token';
 
-        return Cache::remember($cacheKey, 3600, function () {
-            try {
-                $response = Http::withoutVerifying()
-                    ->timeout(15)
-                    ->post($this->baseUrl . '/auth/login', [
-                        'usernameOrEmail' => $this->user,
-                        'password' => $this->password,
-                    ]);
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
 
-                if ($response->successful()) {
-                    return $response->json('access_token');
-                }
-
-                Log::warning('ConsaludService: login fallido', [
-                    'status' => $response->status(),
+        try {
+            $response = $this->http()
+                ->timeout(15)
+                ->post($this->baseUrl . '/auth/login', [
+                    'usernameOrEmail' => $this->user,
+                    'password' => $this->password,
                 ]);
-                return null;
-            } catch (\Exception $e) {
-                Log::warning('ConsaludService: error en login: ' . $e->getMessage());
-                return null;
+
+            if ($response->successful()) {
+                // Consalud a veces manda BOM UTF-8; json() de Laravel falla con eso
+                $token = $this->jsonBody($response)['access_token'] ?? null;
+                if (is_string($token) && $token !== '') {
+                    Cache::put($cacheKey, $token, 3600);
+                    return $token;
+                }
             }
-        });
+
+            $this->ultimoError = 'Login Consalud fallido (HTTP ' . $response->status() . ')';
+            Log::warning('ConsaludService: login fallido', [
+                'status' => $response->status(),
+                'body_preview' => substr($response->body(), 0, 120),
+            ]);
+            return null;
+        } catch (\Exception $e) {
+            $this->ultimoError = 'Consalud no disponible: ' . $e->getMessage();
+            Log::warning('ConsaludService: error en login: ' . $e->getMessage());
+            return null;
+        }
     }
 }

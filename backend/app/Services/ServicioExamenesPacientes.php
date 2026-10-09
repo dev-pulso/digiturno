@@ -66,13 +66,29 @@ class ServicioExamenesPacientes
 
         $this->limpiarTurnosViejos($areasPendientes->pluck('id')->toArray());
 
+        // ponytail: un solo GROUP BY en vez de count() por área (N+1)
+        $areasIds = $areasPendientes->pluck('id');
+        $conteos = Turno::whereIn('area_id', $areasIds)
+            ->where('estado', EstadoTurno::EnEspera)
+            ->whereDate('created_at', today())
+            ->selectRaw('area_id, count(*) as total')
+            ->groupBy('area_id')
+            ->pluck('total', 'area_id');
+
         $areaElegida = $areasPendientes
-            ->sortBy(fn(Area $a) => Turno::where('area_id', $a->id)
-                ->where('estado', EstadoTurno::EnEspera)
-                ->whereDate('created_at', today())
-                ->count()
-            )
+            ->sortBy(fn(Area $a) => $conteos[$a->id] ?? 0)
             ->first();
+
+        // Anti-duplicado: si ya hay turno en espera hoy para este paciente en el área elegida, no crear otro
+        $turnoExistente = Turno::where('area_id', $areaElegida->id)
+            ->where('paciente_id', $pacienteId)
+            ->where('estado', EstadoTurno::EnEspera)
+            ->whereDate('created_at', today())
+            ->first();
+
+        if ($turnoExistente) {
+            return $turnoExistente;
+        }
 
         $examenElegido = $examenesPendientes
             ->firstWhere('tipoExamen.area_id', $areaElegida->id);

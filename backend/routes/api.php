@@ -2,7 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1')->group(function () {
+// ponytail: throttle global, endurecer rutas sensibles (auth) cuando llegue Consalud
+Route::prefix('v1')->middleware('throttle:120,1')->group(function () {
     require base_path('app/Modules/Areas/routes.php');
     require base_path('app/Modules/Patients/routes.php');
     require base_path('app/Modules/TiposExamenes/routes.php');

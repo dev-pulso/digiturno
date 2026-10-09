@@ -70,6 +70,9 @@ export function DisplayPage() {
     });
     pusherRef.current = pusher;
 
+    // ponytail: cualquier evento refresca el panel; el poll de 30s queda solo de respaldo
+    const refrescar = () => fetchData();
+
     areas.forEach((area) => {
       const channel = pusher.subscribe(`area.${area.id}`);
 
@@ -79,7 +82,12 @@ export function DisplayPage() {
         if (!turno?.numero_turno) return;
         setUltimoLlamado({ turno, area: { ...area } });
         setAnimKey(k => k + 1);
-        anunciarTurno({ ...turno, area_nombre: area.nombre });
+        anunciarTurno({
+          numero_turno: turno.numero_turno,
+          nombre_paciente: turno.nombre_paciente,
+          area_nombre: area.nombre,
+        });
+        refrescar();
       });
 
       channel.bind('turno.rellamado', (data: any) => {
@@ -88,12 +96,17 @@ export function DisplayPage() {
         if (!turno?.numero_turno) return;
         setUltimoLlamado({ turno, area: { ...area } });
         setAnimKey(k => k + 1);
-        anunciarTurno({ ...turno, area_nombre: area.nombre });
+        anunciarTurno({
+          numero_turno: turno.numero_turno,
+          nombre_paciente: turno.nombre_paciente,
+          area_nombre: area.nombre,
+        });
+        refrescar();
       });
 
-      channel.bind('turno.creado', () => setWsEventos(e => e + 1));
-      channel.bind('turno.completado', () => setWsEventos(e => e + 1));
-      channel.bind('turno.ausente', () => setWsEventos(e => e + 1));
+      channel.bind('turno.creado', () => { setWsEventos(e => e + 1); refrescar(); });
+      channel.bind('turno.completado', () => { setWsEventos(e => e + 1); refrescar(); });
+      channel.bind('turno.ausente', () => { setWsEventos(e => e + 1); refrescar(); });
     });
 
     return () => {
@@ -131,7 +144,7 @@ export function DisplayPage() {
   const heroTurno = hero?.turno;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="h-dvh flex flex-col overflow-hidden bg-background">
       <header className="flex items-center justify-between px-10 py-5 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <img src={Logo} className="w-24 h-24" style={{ width: '50px', height: '50px' }} />
@@ -153,9 +166,9 @@ export function DisplayPage() {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col p-8">
-          <div className="flex-1 flex flex-col items-center justify-center">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col p-8">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
             {heroTurno && heroArea ? (
               <div className="text-center" key={animKey}>
                 <p className="font-mono text-xs tracking-[0.25em] uppercase mb-4" style={{ color: `${heroArea.color}cc` }}>{heroArea.nombre}</p>
@@ -179,7 +192,7 @@ export function DisplayPage() {
               </div>
             )}
           </div>
-
+{/* 
           {areas.length > 0 && (
             <div className="grid grid-cols-3 gap-3 mt-6 shrink-0">
               {areas.map((a) => (
@@ -194,29 +207,57 @@ export function DisplayPage() {
                 </div>
               ))}
             </div>
-          )}
+          )} */}
         </div>
 
-        <div className="flex-1 flex flex-col bg-muted border-l border-border">
+        {/* Panel video vertical: altura = área entre header y footer (sin h-screen) */}
+        <div className="flex-1 min-h-0 flex flex-col bg-black border-l border-border">
           {currentVideo ? (
-            <div className="flex-1 flex items-center justify-center p-8">
-              <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl border border-foreground/10">
-                <video ref={videoRef} className="w-full h-full object-contain bg-black" autoPlay muted playsInline loop={videos.length === 1} onEnded={handleVideoEnded}
-                  onError={() => { setCurrentVideoIdx(prev => (prev + 1) % videos.length); }}>
-                  <source src={currentVideo.url} type={currentVideo.tipo_mime} />
-                </video>
+            <div className="relative flex-1 min-h-0">
+              {/* marco 9:16 anclado a la altura disponible del panel */}
+              <div className="absolute inset-0 flex items-center justify-center p-3">
+                <div
+                  className="rounded-2xl overflow-hidden shadow-2xl border border-foreground/10 bg-black"
+                  style={{
+                    height: '100%',
+                    width: 'auto',
+                    maxWidth: '100%',
+                    aspectRatio: '9 / 16',
+                  }}
+                >
+                  <video
+                    ref={videoRef}
+                    className="block h-full w-full object-cover"
+                    autoPlay
+                    muted
+                    playsInline
+                    loop={videos.length === 1}
+                    onEnded={handleVideoEnded}
+                    onError={() => { setCurrentVideoIdx(prev => (prev + 1) % videos.length); }}
+                  >
+                    <source src={currentVideo.url} type={currentVideo.tipo_mime} />
+                  </video>
+                </div>
               </div>
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center text-foreground/20">
-              <div className="text-center"><div className="text-6xl mb-4">🎬</div><p className="font-display font-bold text-xl text-foreground/30 mb-2">Sin videos</p><p className="text-sm">Agrega videos desde el panel de administración</p></div>
+              <div className="text-center">
+                <div className="text-6xl mb-4">🎬</div>
+                <p className="font-display font-bold text-xl text-foreground/30 mb-2">Sin videos</p>
+                <p className="text-sm">Agrega videos desde el panel de administración</p>
+              </div>
             </div>
           )}
           {videos.length > 0 && (
-            <div className="flex justify-center gap-2 py-4 shrink-0">
+            <div className="flex justify-center gap-2 py-3 shrink-0 z-10">
               {videos.map((v, i) => (
-                <button key={v.id} onClick={() => setCurrentVideoIdx(i)} className={`w-2 h-2 rounded-full transition-all ${i === currentVideoIdx ? 'w-6' : ''}`}
-                  style={{ background: i === currentVideoIdx ? '#044B84' : 'rgba(255,255,255,0.2)' }} />
+                <button
+                  key={v.id}
+                  onClick={() => setCurrentVideoIdx(i)}
+                  className={`w-2 h-2 rounded-full transition-all ${i === currentVideoIdx ? 'w-6' : ''}`}
+                  style={{ background: i === currentVideoIdx ? '#044B84' : 'rgba(255,255,255,0.2)' }}
+                />
               ))}
             </div>
           )}

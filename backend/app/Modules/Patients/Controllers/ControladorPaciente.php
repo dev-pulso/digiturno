@@ -71,8 +71,28 @@ class ControladorPaciente extends Controller
 
         $data = $this->consaludService->buscarIngresoCompleto($documento);
 
+        // Fallback local si Consalud falla o no trae ingreso (dev / API caída)
         if (!$data) {
-            return response()->json(['mensaje' => 'Paciente no encontrado'], 404);
+            $local = Paciente::where('numero_documento', $documento)->first();
+            if ($local) {
+                $local->load('examenes.tipoExamen.area');
+                return response()->json([
+                    'paciente' => new PacienteResource($local),
+                    'ingreso' => null,
+                    'historia_status' => null,
+                    'fuente' => 'local',
+                    'aviso' => $this->consaludService->ultimoError()
+                        ?? 'Paciente local (sin ingreso Consalud)',
+                ]);
+            }
+
+            $errorConsalud = $this->consaludService->ultimoError();
+            return response()->json([
+                'mensaje' => $errorConsalud
+                    ? 'Consalud no disponible y paciente no está en Digiturno'
+                    : 'Paciente no encontrado',
+                'detalle' => $errorConsalud,
+            ], 404);
         }
 
         $data['paciente']->load('examenes.tipoExamen.area');
@@ -81,6 +101,7 @@ class ControladorPaciente extends Controller
             'paciente' => new PacienteResource($data['paciente']),
             'ingreso' => $this->formatearIngreso($data['ingreso']),
             'historia_status' => $data['historia_status'],
+            'fuente' => 'consalud',
         ]);
     }
 

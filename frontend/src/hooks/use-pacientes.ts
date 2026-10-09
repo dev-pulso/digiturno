@@ -65,9 +65,12 @@ export function usePacientes() {
       setPaciente(pacienteEncontrado);
       setIngreso(res.data.ingreso || null);
       setHistoriaStatus(res.data.historia_status || null);
+      if (res.data.fuente === 'local' && res.data.aviso) {
+        toast.message(res.data.aviso);
+      }
       return pacienteEncontrado;
     } catch {
-      toast.error('Paciente no encontrado');
+      // interceptor de api ya muestra mensaje (Consalud caído vs no encontrado)
       return null;
     } finally {
       setBuscando(false);

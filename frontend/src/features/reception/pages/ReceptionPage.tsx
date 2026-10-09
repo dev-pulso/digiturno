@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useSpeech } from "@/hooks/use-speech";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Loader2 } from "lucide-react";
 import {
@@ -78,7 +77,7 @@ export function ReceptionPage() {
     fetchCola,
     fetchDisplay,
   } = useTurnos(activeAreaId);
-  const { anunciar } = useSpeech();
+  // TTS solo en /display (evita doble anuncio / corte)
 
   useWebSocket(activeAreaId, {
     "turno.creado": () => {
@@ -175,11 +174,7 @@ export function ReceptionPage() {
   const handleLlamar = async (turnoId: number) => {
     try {
       const t = await llamarTurno(turnoId);
-      toast.success(`📣 Llamando ${t.numero_turno}`);
-      anunciar({
-        nombre_paciente: t.nombre_paciente,
-        area_nombre: activeArea?.nombre,
-      });
+      toast.success(`Llamando ${t.numero_turno}`);
     } catch (error: any) {
       const mensaje = error?.response?.data?.errors?.paciente?.[0]
         || error?.response?.data?.message
@@ -238,12 +233,8 @@ export function ReceptionPage() {
 
   const handleRellamar = async (turnoId: number) => {
     try {
-      const t = await rellamarTurno(turnoId);
+      await rellamarTurno(turnoId);
       toast.success("Re-llamando");
-      anunciar({
-        nombre_paciente: t.nombre_paciente,
-        area_nombre: activeArea?.nombre,
-      });
     } catch {
       toast.error("Error");
     }

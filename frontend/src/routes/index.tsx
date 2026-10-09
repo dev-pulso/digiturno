@@ -9,6 +9,7 @@ import { AdminTiposExamenesPage } from '@/features/admin/pages/AdminTiposExamene
 import { AdminVideosPage } from '@/features/admin/pages/AdminVideosPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { AppShell } from '@/components/layout/AppShell';
+import { RequireStaff } from '@/components/layout/RequireStaff';
 
 export const router = createBrowserRouter([
   {
@@ -16,15 +17,22 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <LandingPage /> },
-      { path: 'recepcion', element: <ReceptionPage /> },
-      { path: 'consultorio/:areaId', element: <ConsultorioPage /> },
+      // públicas
       { path: 'display', element: <DisplayPage /> },
       { path: 'display/:areaId', element: <DisplayPage /> },
       { path: 'kiosco', element: <KioskPage /> },
-      { path: 'admin/areas', element: <AdminAreasPage /> },
-      { path: 'admin/examenes', element: <AdminTiposExamenesPage /> },
-      { path: 'admin/videos', element: <AdminVideosPage /> },
-      { path: 'dashboard', element: <DashboardPage /> },
+      // staff (stub hasta auth Consalud)
+      {
+        element: <RequireStaff />,
+        children: [
+          { path: 'recepcion', element: <ReceptionPage /> },
+          { path: 'consultorio/:areaId', element: <ConsultorioPage /> },
+          { path: 'admin/areas', element: <AdminAreasPage /> },
+          { path: 'admin/examenes', element: <AdminTiposExamenesPage /> },
+          { path: 'admin/videos', element: <AdminVideosPage /> },
+          { path: 'dashboard', element: <DashboardPage /> },
+        ],
+      },
     ],
   },
 ]);

@@ -5,7 +5,6 @@ import { api } from '@/lib/api-client';
 import { Area, Turno } from '@/lib/types';
 import { useConsultorio } from '@/hooks/use-consultorio';
 import { useWebSocket } from '@/hooks/use-websocket';
-import { useSpeech } from '@/hooks/use-speech';
 import { useClock } from '@/hooks/use-clock';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,7 +20,7 @@ export function ConsultorioPage() {
   const [areaId, setAreaId] = useState<number | null>(null);
 
   const { cola, actual, historial, fetchCola, fetchHistorial, llamarSiguiente, llamarTurno, completarTurno, ausenteTurno, rellamarTurno } = useConsultorio(areaId);
-  const { anunciar } = useSpeech();
+  // TTS solo en /display (evita corte + doble anuncio si ambas pantallas están abiertas)
 
   useEffect(() => {
     api.get('/areas').then((res) => {
@@ -57,8 +56,7 @@ export function ConsultorioPage() {
   const handleLlamarSiguiente = async () => {
     try {
       const t = await llamarSiguiente();
-      toast.success(`📣 Llamando ${t.numero_turno}`);
-      anunciar({ nombre_paciente: t.nombre_paciente, area_nombre: area?.nombre });
+      toast.success(`Llamando ${t.numero_turno}`);
     } catch (error: any) {
       const mensaje = error?.response?.data?.errors?.paciente?.[0]
         || error?.response?.data?.message
@@ -71,8 +69,7 @@ export function ConsultorioPage() {
   const handleLlamar = async (turnoId: number) => {
     try {
       const t = await llamarTurno(turnoId);
-      toast.success(`📣 Llamando ${t.numero_turno}`);
-      anunciar({ nombre_paciente: t.nombre_paciente, area_nombre: area?.nombre });
+      toast.success(`Llamando ${t.numero_turno}`);
     } catch (error: any) {
       const mensaje = error?.response?.data?.errors?.paciente?.[0]
         || error?.response?.data?.message
@@ -100,7 +97,6 @@ export function ConsultorioPage() {
     try {
       const t = await rellamarTurno(turnoId);
       toast.success('Re-llamando');
-      anunciar({ nombre_paciente: t.nombre_paciente, area_nombre: area?.nombre });
     } catch { toast.error('Error'); }
   };
 
