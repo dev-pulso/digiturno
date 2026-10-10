@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Loader2 } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import {
   ChevronLeftIcon,
   MonitorDotIcon,
@@ -47,6 +48,7 @@ export function ReceptionPage() {
   const navigate = useNavigate();
   const { areas, refetch: refetchAreas } = useAreas();
   const { formatted } = useClock();
+  const { user, logout } = useAuth();
   const {
     paciente,
     ingreso,
@@ -368,6 +370,29 @@ export function ReceptionPage() {
             <HugeiconsIcon icon={MonitorDotIcon} className="h-3.5 w-3.5 mr-1" />{" "}
             Pantallas
           </Button>
+
+          {user && (
+            <div className="flex items-center gap-2.5 pl-2.5 border-l border-border">
+              <div className="flex flex-col text-right">
+                <span className="text-xs font-semibold leading-tight text-foreground">
+                  {[user.primer_nombre, user.primer_apellido].filter(Boolean).join(" ") || user.usuario}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
+                  Recepción
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => logout(true)}
+                className="h-8 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive border-border cursor-pointer"
+                title="Cerrar sesión"
+              >
+                <LogOut className="h-3.5 w-3.5 mr-1" />
+                Salir
+              </Button>
+            </div>
+          )}
         </div>
       </header>
 

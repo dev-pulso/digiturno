@@ -8,6 +8,7 @@ import { AdminAreasPage } from '@/features/admin/pages/AdminAreasPage';
 import { AdminTiposExamenesPage } from '@/features/admin/pages/AdminTiposExamenesPage';
 import { AdminVideosPage } from '@/features/admin/pages/AdminVideosPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
+import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { AppShell } from '@/components/layout/AppShell';
 import { RequireStaff } from '@/components/layout/RequireStaff';
 
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <LandingPage /> },
       // públicas
+      { path: 'login', element: <LoginPage /> },
       { path: 'display', element: <DisplayPage /> },
       { path: 'display/:areaId', element: <DisplayPage /> },
       { path: 'kiosco', element: <KioskPage /> },

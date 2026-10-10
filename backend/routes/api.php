@@ -14,4 +14,5 @@ Route::prefix('v1')->middleware('throttle:120,1')->group(function () {
     require base_path('app/Modules/Admin/routes.php');
     require base_path('app/Modules/Dashboard/routes.php');
     require base_path('app/Modules/Consalud/routes.php');
+    require base_path('app/Modules/Auth/routes.php');
 });

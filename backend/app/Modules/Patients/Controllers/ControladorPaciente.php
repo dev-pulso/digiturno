@@ -69,7 +69,8 @@ class ControladorPaciente extends Controller
         $request->validate(['numero_documento' => 'required|string|max:30']);
         $documento = $request->numero_documento;
 
-        $data = $this->consaludService->buscarIngresoCompleto($documento);
+        $token = $request->cookie('consalud_token') ?? $request->bearerToken();
+        $data = $this->consaludService->buscarIngresoCompleto($documento, $token);
 
         // Fallback local si Consalud falla o no trae ingreso (dev / API caída)
         if (!$data) {

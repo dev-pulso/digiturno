@@ -28,10 +28,67 @@ class ConsaludService
         return $this->ultimoError;
     }
 
-    public function buscarPacientes(string $busqueda): array
+    public function login(string $usernameOrEmail, string $password): ?array
     {
         $this->ultimoError = null;
-        $token = $this->obtenerToken();
+        try {
+            $response = $this->http()
+                ->timeout(15)
+                ->post($this->baseUrl . '/auth/login', [
+                    'usernameOrEmail' => $usernameOrEmail,
+                    'password' => $password,
+                ]);
+
+            if ($response->successful()) {
+                $data = $this->jsonBody($response);
+                $token = $data['access_token'] ?? $data['accessToken'] ?? null;
+                if (is_string($token) && $token !== '') {
+                    return [
+                        'access_token' => $token,
+                        'token_type' => $data['token_type'] ?? $data['tokenType'] ?? 'Bearer',
+                        'expires_in' => $data['expires_in'] ?? $data['expiresIn'] ?? 3600,
+                        'user' => $data['user'] ?? null,
+                    ];
+                }
+            }
+
+            $body = $this->jsonBody($response);
+            $msg = $body['message'] ?? $body['error'] ?? null;
+            $this->ultimoError = $msg ?: ('Login Consalud fallido (HTTP ' . $response->status() . ')');
+            Log::warning('ConsaludService: login de usuario fallido', [
+                'status' => $response->status(),
+                'usuario' => $usernameOrEmail,
+            ]);
+            return null;
+        } catch (\Exception $e) {
+            $this->ultimoError = 'Consalud no disponible: ' . $e->getMessage();
+            Log::warning('ConsaludService: error en login de usuario: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function me(string $token): ?array
+    {
+        try {
+            $response = $this->http()
+                ->withToken($token)
+                ->timeout(15)
+                ->get($this->baseUrl . '/auth/me');
+
+            if ($response->successful()) {
+                return $this->jsonBody($response);
+            }
+            return null;
+        } catch (\Exception $e) {
+            Log::warning('ConsaludService: error en me(): ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function buscarPacientes(string $busqueda, ?string $userToken = null): array
+    {
+        $this->ultimoError = null;
+        $token = $userToken ?: $this->obtenerToken();
         if (!$token) {
             $this->ultimoError = $this->ultimoError ?? 'No se pudo autenticar con Consalud';
             Log::warning('ConsaludService: no se pudo obtener token');
@@ -64,9 +121,9 @@ class ConsaludService
         }
     }
 
-    public function buscarPacientePorDocumento(string $documento): ?Paciente
+    public function buscarPacientePorDocumento(string $documento, ?string $userToken = null): ?Paciente
     {
-        $resultados = $this->buscarPacientes($documento);
+        $resultados = $this->buscarPacientes($documento, $userToken);
         if (empty($resultados)) {
             return null;
         }
@@ -80,9 +137,9 @@ class ConsaludService
         return $this->sincronizarPaciente($pacienteData);
     }
 
-    public function buscarIngresoCompleto(string $documento): ?array
+    public function buscarIngresoCompleto(string $documento, ?string $userToken = null): ?array
     {
-        $resultados = $this->buscarPacientes($documento);
+        $resultados = $this->buscarPacientes($documento, $userToken);
         if (empty($resultados)) {
             return null;
         }
@@ -95,7 +152,7 @@ class ConsaludService
 
         $paciente = $this->sincronizarPaciente($pacienteData);
 
-        $historiaStatus = $this->historiaStatus([$ingreso['id']]);
+        $historiaStatus = $this->historiaStatus([$ingreso['id']], $userToken);
 
         return [
             'paciente' => $paciente,
@@ -105,13 +162,13 @@ class ConsaludService
         ];
     }
 
-    public function historiaStatus(array $ingresoIds): array
+    public function historiaStatus(array $ingresoIds, ?string $userToken = null): array
     {
         if (empty($ingresoIds)) {
             return [];
         }
 
-        $token = $this->obtenerToken();
+        $token = $userToken ?: $this->obtenerToken();
         if (!$token) {
             return [];
         }
@@ -217,8 +274,8 @@ class ConsaludService
                 ]);
 
             if ($response->successful()) {
-                // Consalud a veces manda BOM UTF-8; json() de Laravel falla con eso
-                $token = $this->jsonBody($response)['access_token'] ?? null;
+                $body = $this->jsonBody($response);
+                $token = $body['access_token'] ?? $body['accessToken'] ?? null;
                 if (is_string($token) && $token !== '') {
                     Cache::put($cacheKey, $token, 3600);
                     return $token;

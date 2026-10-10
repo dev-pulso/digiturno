@@ -4,11 +4,13 @@ import { toast } from 'sonner';
 export const api = axios.create({
   baseURL: '/api/v1',
   headers: { 'Accept': 'application/json' },
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('ips-token');
+  const token = localStorage.getItem('digiturno_token') || localStorage.getItem('ips-token');
   if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
     config.headers['X-Consalud-Token'] = token;
   }
   return config;
@@ -19,6 +21,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    if (err.response?.status === 401 && !window.location.pathname.includes('/login')) {
+      localStorage.removeItem('digiturno_token');
+      localStorage.removeItem('digiturno_user');
+      localStorage.removeItem('ips-token');
+      if (window.location.pathname.includes('/recepcion')) {
+        toast.error('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
+        window.location.href = '/login';
+        return Promise.reject(err);
+      }
+    }
+
     const msg = err.response?.data?.mensaje
       || err.response?.data?.message
       || 'Error de comunicación con el servidor';

@@ -1,17 +1,20 @@
 import { Navigate, Outlet } from 'react-router-dom';
 
-// ponytail: stub hasta auth Consalud. En DEV no bloquea (trabajo local).
-// En prod exige ips-token; cuando llegue la integración, validar firma/rol real.
-const STAFF_KEY = 'ips-token';
+const TOKEN_KEY = 'digiturno_token';
+const USER_KEY = 'digiturno_user';
+const LEGACY_KEY = 'ips-token';
 
 export function hasStaffSession(): boolean {
-  if (import.meta.env.DEV) return true;
-  return !!localStorage.getItem(STAFF_KEY);
+  return !!(
+    localStorage.getItem(TOKEN_KEY) ||
+    localStorage.getItem(USER_KEY) ||
+    localStorage.getItem(LEGACY_KEY)
+  );
 }
 
 export function RequireStaff() {
   if (!hasStaffSession()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
   return <Outlet />;
 }
