@@ -567,9 +567,22 @@ export function ReceptionPage() {
           <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 p-5 overflow-y-auto space-y-2 scrollbar-hide">
               <div className="flex items-center justify-between mb-1">
-                <p className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground">
-                  Cola del Consultorio
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground">
+                    Cola del Consultorio {activeArea ? `(${activeArea.nombre})` : ""}
+                  </p>
+                  {activeArea && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => window.open(`/consultorio/${activeArea.codigo || activeArea.id}`, "_blank")}
+                      className="h-6 px-2 text-[10px] text-primary hover:text-primary hover:bg-primary/10 font-mono"
+                      title="Abrir pantalla del médico en nueva pestaña"
+                    >
+                      Abrir vista médico ↗
+                    </Button>
+                  )}
+                </div>
                 <span className="font-mono text-[11px] bg-accent border border-border rounded-md px-2 py-0.5 text-muted-foreground">
                   {soloEnEspera.length} turno
                   {soloEnEspera.length !== 1 ? "s" : ""}

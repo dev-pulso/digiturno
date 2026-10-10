@@ -91,14 +91,23 @@ export function LandingPage() {
 
         <div className="flex flex-wrap justify-center gap-3 max-w-3xl">
           {areas.map((area) => (
-            <Card key={area.id} className="px-4 py-3 bg-card border-border hover:border-foreground/10 transition-colors flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full" style={{ background: area.color }} />
+            <Card
+              key={area.id}
+              onClick={() => navigate(`/consultorio/${area.codigo || area.id}`)}
+              className="px-4 py-3 bg-card border-border hover:border-primary/50 hover:bg-accent/80 cursor-pointer transition-all flex items-center gap-3 group shadow-xs"
+              title={`Ingresar al módulo de ${area.nombre}`}
+            >
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ background: area.color }} />
               <span className="font-mono font-bold text-xs">{area.prefijo}</span>
-              <span className="text-xs text-muted-foreground">{area.nombre}</span>
-              {area.turnos_espera > 0 && (
+              <span className="text-xs text-foreground group-hover:text-primary transition-colors">{area.nombre}</span>
+              {area.turnos_espera > 0 ? (
                 <Badge className="text-[10px] font-semibold bg-foreground/10 text-foreground/60">
                   {area.turnos_espera} en espera
                 </Badge>
+              ) : (
+                <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                  Entrar &rarr;
+                </span>
               )}
             </Card>
           ))}

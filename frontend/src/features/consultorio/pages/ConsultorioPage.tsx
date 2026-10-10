@@ -11,6 +11,13 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ChevronLeftIcon, TelephoneIcon, CheckIcon, Cancel01Icon, Refresh01Icon, AlignBoxMiddleCenterIcon } from '@hugeicons/core-free-icons';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export function ConsultorioPage() {
   const { areaId: paramAreaId } = useParams();
@@ -18,6 +25,7 @@ export function ConsultorioPage() {
   const { formatted } = useClock();
   const [area, setArea] = useState<Area | null>(null);
   const [areaId, setAreaId] = useState<number | null>(null);
+  const [todasLasAreas, setTodasLasAreas] = useState<Area[]>([]);
 
   const { cola, actual, historial, fetchCola, fetchHistorial, llamarSiguiente, llamarTurno, completarTurno, ausenteTurno, rellamarTurno } = useConsultorio(areaId);
   // TTS solo en /display (evita corte + doble anuncio si ambas pantallas están abiertas)
@@ -25,6 +33,7 @@ export function ConsultorioPage() {
   useEffect(() => {
     api.get('/areas').then((res) => {
       const areas: Area[] = res.data.data || res.data;
+      setTodasLasAreas(areas);
       if (paramAreaId) {
         const found = areas.find(a => a.codigo === paramAreaId || a.id === parseInt(paramAreaId));
         if (found) {
@@ -124,6 +133,26 @@ export function ConsultorioPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {todasLasAreas.length > 1 && (
+            <Select
+              value={area.codigo || String(area.id)}
+              onValueChange={(val) => navigate(`/consultorio/${val}`)}
+            >
+              <SelectTrigger className="h-8 text-xs font-semibold bg-background border-border min-w-[170px]">
+                <SelectValue placeholder="Cambiar consultorio" />
+              </SelectTrigger>
+              <SelectContent>
+                {todasLasAreas.map((a) => (
+                  <SelectItem key={a.id} value={a.codigo || String(a.id)}>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ background: a.color }} />
+                      {a.nombre} ({a.prefijo})
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-3 py-1 text-[11px] text-emerald-700 dark:text-emerald-400 font-mono"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />EN VIVO</div>
           <span className="font-mono text-xs text-muted-foreground">{formatted}</span>
         </div>
