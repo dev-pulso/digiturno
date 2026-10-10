@@ -10,14 +10,22 @@ import { AdminVideosPage } from '@/features/admin/pages/AdminVideosPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { AppShell } from '@/components/layout/AppShell';
-import { RequireStaff } from '@/components/layout/RequireStaff';
+import { RequireStaff, hasStaffSession } from '@/components/layout/RequireStaff';
+import { Navigate } from 'react-router-dom';
+
+function RootIndex() {
+  if (!hasStaffSession()) {
+    return <Navigate to="/login" replace />;
+  }
+  return <LandingPage />;
+}
 
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <LandingPage /> },
+      { index: true, element: <RootIndex /> },
       // públicas
       { path: 'login', element: <LoginPage /> },
       { path: 'display', element: <DisplayPage /> },

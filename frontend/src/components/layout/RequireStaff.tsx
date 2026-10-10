@@ -2,14 +2,13 @@ import { Navigate, Outlet } from 'react-router-dom';
 
 const TOKEN_KEY = 'digiturno_token';
 const USER_KEY = 'digiturno_user';
-const LEGACY_KEY = 'ips-token';
 
 export function hasStaffSession(): boolean {
-  return !!(
-    localStorage.getItem(TOKEN_KEY) ||
-    localStorage.getItem(USER_KEY) ||
-    localStorage.getItem(LEGACY_KEY)
-  );
+  // Limpiar vestigio de token de prueba anterior si existe
+  if (localStorage.getItem('ips-token') && !localStorage.getItem(TOKEN_KEY)) {
+    localStorage.removeItem('ips-token');
+  }
+  return !!(localStorage.getItem(TOKEN_KEY) && localStorage.getItem(USER_KEY));
 }
 
 export function RequireStaff() {

@@ -8,10 +8,9 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('digiturno_token') || localStorage.getItem('ips-token');
+  const token = localStorage.getItem('digiturno_token');
   if (token) {
     config.headers['Authorization'] = `Bearer ${token}`;
-    config.headers['X-Consalud-Token'] = token;
   }
   return config;
 });
