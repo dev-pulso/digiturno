@@ -19,10 +19,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
+import { LogOut } from 'lucide-react';
+
 export function ConsultorioPage() {
   const { areaId: paramAreaId } = useParams();
   const navigate = useNavigate();
   const { formatted } = useClock();
+  const { user, logout } = useAuth();
   const [area, setArea] = useState<Area | null>(null);
   const [areaId, setAreaId] = useState<number | null>(null);
   const [todasLasAreas, setTodasLasAreas] = useState<Area[]>([]);
@@ -133,7 +138,7 @@ export function ConsultorioPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {todasLasAreas.length > 1 && (
+          {todasLasAreas.length > 1 && user?.puede_rotar !== false && (
             <Select
               value={area.codigo || String(area.id)}
               onValueChange={(val) => navigate(`/consultorio/${val}`)}
@@ -154,7 +159,18 @@ export function ConsultorioPage() {
             </Select>
           )}
           <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-3 py-1 text-[11px] text-emerald-700 dark:text-emerald-400 font-mono"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />EN VIVO</div>
+          <ThemeToggle />
           <span className="font-mono text-xs text-muted-foreground">{formatted}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logout(true)}
+            className="h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+            title="Cerrar sesión"
+          >
+            <LogOut className="h-3.5 w-3.5 mr-1.5" />
+            Salir
+          </Button>
         </div>
       </header>
 

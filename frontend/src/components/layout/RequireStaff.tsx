@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
+import type { ConsaludUser } from '@/features/auth/hooks/useAuth';
 
 const TOKEN_KEY = 'digiturno_token';
 const USER_KEY = 'digiturno_user';
@@ -11,9 +12,19 @@ export function hasStaffSession(): boolean {
   return !!(localStorage.getItem(TOKEN_KEY) && localStorage.getItem(USER_KEY));
 }
 
+export function getStaffUser(): ConsaludUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function RequireStaff() {
   if (!hasStaffSession()) {
     return <Navigate to="/login" replace />;
   }
   return <Outlet />;
 }
+

@@ -70,5 +70,6 @@ class DatabaseSeeder extends Seeder
             }
         }
         $this->call(ConsaludCategoriasAreasSeeder::class);
+        $this->call(PersonalInicialSeeder::class);
     }
 }

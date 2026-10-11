@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { hasStaffSession } from '@/components/layout/RequireStaff';
+import { hasStaffSession, getStaffUser } from '@/components/layout/RequireStaff';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,13 @@ export function LoginPage() {
 
   useEffect(() => {
     if (hasStaffSession()) {
-      navigate('/recepcion', { replace: true });
+      const activeUser = getStaffUser();
+      if (activeUser?.rol === 'medico') {
+        const codigo = activeUser.area_predeterminada?.codigo || 'c1';
+        navigate(`/consultorio/${codigo}`, { replace: true });
+      } else {
+        navigate('/recepcion', { replace: true });
+      }
     }
   }, [navigate]);
 
@@ -27,9 +33,14 @@ export function LoginPage() {
     e.preventDefault();
     if (!usernameOrEmail.trim() || !password) return;
 
-    const success = await login(usernameOrEmail, password);
-    if (success) {
-      navigate('/recepcion', { replace: true });
+    const loggedUser = await login(usernameOrEmail, password);
+    if (loggedUser) {
+      if (loggedUser.rol === 'medico') {
+        const codigo = loggedUser.area_predeterminada?.codigo || 'c1';
+        navigate(`/consultorio/${codigo}`, { replace: true });
+      } else {
+        navigate('/recepcion', { replace: true });
+      }
     }
   };
 

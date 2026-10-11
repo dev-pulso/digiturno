@@ -2,9 +2,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api-client';
 import { toast } from 'sonner';
 
+export interface AreaPredeterminada {
+  id: number;
+  codigo: string;
+  nombre: string;
+  prefijo: string;
+}
+
 export interface ConsaludUser {
   id: number;
   usuario: string;
+  identificacion?: string;
   primer_nombre?: string;
   segundo_nombre?: string;
   primer_apellido?: string;
@@ -12,6 +20,9 @@ export interface ConsaludUser {
   email?: string;
   role_id?: number;
   estado?: number;
+  rol?: 'admin' | 'recepcion' | 'medico';
+  area_predeterminada?: AreaPredeterminada | null;
+  puede_rotar?: boolean;
   [key: string]: any;
 }
 
@@ -90,7 +101,7 @@ export function useAuth() {
     };
   }, [token, user, resetInactivityTimer]);
 
-  const login = async (usernameOrEmail: string, password: string): Promise<boolean> => {
+  const login = async (usernameOrEmail: string, password: string): Promise<ConsaludUser | null> => {
     setIsLoading(true);
     try {
       const res = await api.post<LoginResponse>('/auth/login', {
@@ -119,11 +130,11 @@ export function useAuth() {
         : 'Usuario';
 
       toast.success(`Bienvenido(a), ${nombre}`);
-      return true;
+      return userData || ({} as ConsaludUser);
     } catch (err: any) {
       const msg = err.response?.data?.message || err.response?.data?.mensaje || 'Error al iniciar sesión';
       toast.error(msg);
-      return false;
+      return null;
     } finally {
       setIsLoading(false);
     }

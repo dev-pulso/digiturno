@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, UserCog } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import {
   ChevronLeftIcon,
@@ -477,54 +477,68 @@ export function ReceptionPage() {
                 />{" "}
                 Ver Pantallas
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("/dashboard")}
-                className="border-border text-muted-foreground justify-start text-xs"
-              >
-                <HugeiconsIcon
-                  icon={ChartAverageIcon}
-                  className="h-3.5 w-3.5 mr-2"
-                />{" "}
-                Dashboard
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("/admin/areas")}
-                className="border-border text-muted-foreground justify-start text-xs"
-              >
-                <HugeiconsIcon
-                  icon={MonitorDotIcon}
-                  className="h-3.5 w-3.5 mr-2"
-                />{" "}
-                Admin Áreas
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("/admin/examenes")}
-                className="border-border text-muted-foreground justify-start text-xs"
-              >
-                <HugeiconsIcon
-                  icon={MonitorDotIcon}
-                  className="h-3.5 w-3.5 mr-2"
-                />{" "}
-                Admin Exámenes
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("/admin/videos")}
-                className="border-border text-muted-foreground justify-start text-xs"
-              >
-                <HugeiconsIcon
-                  icon={MonitorDotIcon}
-                  className="h-3.5 w-3.5 mr-2"
-                />{" "}
-                Admin Videos
-              </Button>
+
+              {user?.rol === 'admin' && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/admin/personal")}
+                    className="border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 justify-start text-xs font-semibold"
+                  >
+                    <UserCog className="h-3.5 w-3.5 mr-2" />
+                    Gestión de Personal
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/dashboard")}
+                    className="border-border text-muted-foreground justify-start text-xs"
+                  >
+                    <HugeiconsIcon
+                      icon={ChartAverageIcon}
+                      className="h-3.5 w-3.5 mr-2"
+                    />{" "}
+                    Dashboard
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/admin/areas")}
+                    className="border-border text-muted-foreground justify-start text-xs"
+                  >
+                    <HugeiconsIcon
+                      icon={MonitorDotIcon}
+                      className="h-3.5 w-3.5 mr-2"
+                    />{" "}
+                    Admin Áreas
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/admin/examenes")}
+                    className="border-border text-muted-foreground justify-start text-xs"
+                  >
+                    <HugeiconsIcon
+                      icon={MonitorDotIcon}
+                      className="h-3.5 w-3.5 mr-2"
+                    />{" "}
+                    Admin Exámenes
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/admin/videos")}
+                    className="border-border text-muted-foreground justify-start text-xs"
+                  >
+                    <HugeiconsIcon
+                      icon={MonitorDotIcon}
+                      className="h-3.5 w-3.5 mr-2"
+                    />{" "}
+                    Admin Videos
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </aside>
