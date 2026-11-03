@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '@/lib/api-client';
-import { Paciente, ExamenPaciente } from '@/lib/types';
+import { Paciente, ExamenPaciente, ConsaludCategoriaArea } from '@/lib/types';
 import { toast } from 'sonner';
 
 interface IngresoInfo {
@@ -48,6 +48,7 @@ export function usePacientes() {
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [ingreso, setIngreso] = useState<IngresoInfo | null>(null);
   const [historiaStatus, setHistoriaStatus] = useState<HistoriaStatusData | null>(null);
+  const [categoriasAreas, setCategoriasAreas] = useState<ConsaludCategoriaArea[]>([]);
   const [buscando, setBuscando] = useState(false);
   const [asignando, setAsignando] = useState(false);
 
@@ -65,6 +66,7 @@ export function usePacientes() {
       setPaciente(pacienteEncontrado);
       setIngreso(res.data.ingreso || null);
       setHistoriaStatus(res.data.historia_status || null);
+      setCategoriasAreas(res.data.categorias_areas || []);
       if (res.data.fuente === 'local' && res.data.aviso) {
         toast.message(res.data.aviso);
       }
@@ -132,6 +134,7 @@ export function usePacientes() {
     paciente,
     ingreso,
     historiaStatus,
+    categoriasAreas,
     buscando,
     asignando,
     buscarPorDocumento,

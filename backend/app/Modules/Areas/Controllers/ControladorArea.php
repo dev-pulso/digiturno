@@ -3,6 +3,7 @@
 namespace App\Modules\Areas\Controllers;
 
 use App\Models\Area;
+use App\Enums\EstadoTurno;
 use App\Modules\Areas\Requests\CrearAreaRequest;
 use App\Modules\Areas\Requests\ActualizarAreaRequest;
 use App\Modules\Areas\Resources\AreaResource;
@@ -14,8 +15,8 @@ class ControladorArea extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $areas = Area::with(['turnos' => fn($q) => $q->select('id', 'area_id', 'estado', 'numero_turno', 'nombre_paciente')])
-            ->with('turnoActual')
+        $areas = Area::withCount(['turnos as turnos_espera' => fn($q) => $q->where('estado', EstadoTurno::EnEspera)->hoy()])
+            ->with(['turnoActual' => fn($q) => $q->hoy()])
             ->when(!$request->boolean('todo'), fn($q) => $q->activo())
             ->orderBy('id')
             ->get();
@@ -31,7 +32,8 @@ class ControladorArea extends Controller
 
     public function show(Area $area): JsonResponse
     {
-        $area->loadCount(['turnos as turnos_espera' => fn($q) => $q->where('estado', 'en_espera')]);
+        $area->loadCount(['turnos as turnos_espera' => fn($q) => $q->where('estado', EstadoTurno::EnEspera)->hoy()])
+            ->load(['turnoActual' => fn($q) => $q->hoy()]);
         return response()->json(new AreaResource($area));
     }
 

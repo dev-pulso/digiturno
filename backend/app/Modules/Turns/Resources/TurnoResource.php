@@ -28,6 +28,11 @@ class TurnoResource extends JsonResource
             'segundos_espera' => $this->segundos_espera,
             'segundos_servicio' => $this->segundos_servicio,
             'created_at' => $this->created_at,
+            'examenes_nombres' => (!empty($this->metadatos['examenes_nombres']) && is_array($this->metadatos['examenes_nombres']))
+                ? $this->metadatos['examenes_nombres']
+                : (($this->relationLoaded('examenPaciente') && $this->examenPaciente?->relationLoaded('tipoExamen') && $this->examenPaciente?->tipoExamen?->nombre)
+                    ? [$this->examenPaciente->tipoExamen->nombre]
+                    : null),
             'area' => $this->whenLoaded('area', fn() => [
                 'id' => $this->area->id,
                 'codigo' => $this->area->codigo,

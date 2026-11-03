@@ -16,6 +16,7 @@ class Turno extends Model
         'numero_turno',
         'area_id',
         'paciente_id',
+        'consalud_ingreso_id',
         'examen_paciente_id',
         'nombre_paciente',
         'estado',
@@ -35,6 +36,7 @@ class Turno extends Model
         return [
             'estado' => EstadoTurno::class,
             'origen' => OrigenTurno::class,
+            'consalud_ingreso_id' => 'integer',
             'llamado_en' => 'datetime',
             'completado_en' => 'datetime',
             'ausente_en' => 'datetime',
@@ -87,15 +89,33 @@ class Turno extends Model
 
     public function scopeHoy($query)
     {
-        return $query->whereDate('created_at', today());
+        return $query->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()]);
+    }
+
+    protected static ?array $mapaAtencionHoy = null;
+
+    public static function limpiarMapaAtencion(): void
+    {
+        static::$mapaAtencionHoy = null;
     }
 
     public static function turnoEnAtencionDePaciente(int $pacienteId, ?int $excluirTurnoId = null): ?self
     {
-        return self::where('paciente_id', $pacienteId)
-            ->where('estado', EstadoTurno::Llamando)
-            ->whereDate('created_at', today())
-            ->when($excluirTurnoId, fn ($query) => $query->where('id', '!=', $excluirTurnoId))
-            ->first();
+        if (static::$mapaAtencionHoy === null) {
+            static::$mapaAtencionHoy = self::with('area')
+                ->where('estado', EstadoTurno::Llamando)
+                ->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])
+                ->whereNotNull('paciente_id')
+                ->get()
+                ->groupBy('paciente_id')
+                ->all();
+        }
+
+        $turnosPaciente = static::$mapaAtencionHoy[$pacienteId] ?? null;
+        if (!$turnosPaciente) {
+            return null;
+        }
+
+        return $turnosPaciente->first(fn($t) => $excluirTurnoId ? $t->id !== $excluirTurnoId : true);
     }
 }

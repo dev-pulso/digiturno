@@ -38,6 +38,12 @@ export interface Turno {
   contador_llamados: number;
   segundos_espera: number | null;
   segundos_servicio: number | null;
+  metadatos?: {
+    examenes_nombres?: string[];
+    [key: string]: any;
+  } | null;
+  examenes_nombres?: string[] | null;
+  siguiente_turno?: Turno | null;
   area?: { id: number; codigo: string; nombre: string; prefijo: string; color: string };
   examen_paciente?: {
     id: number;
@@ -62,17 +68,30 @@ export interface ExamenPaciente {
   id: number;
   paciente_id: number;
   tipo_examen_id: number;
+  consalud_ingreso_id?: number | null;
+  examen_ingreso_ids?: number[] | null;
   estado: 'pendiente' | 'en_cola' | 'llamando' | 'completado' | 'ausente';
-  estado_etiqueta: string;
+  estado_etiqueta?: string;
   turno_id: number | null;
   tipo_examen?: {
     id: number;
     nombre: string;
     codigo: string;
+    area_id?: number;
     area?: { id: number; nombre: string; prefijo: string };
   };
-  turno?: { id: number; numero_turno: string; estado: string };
+  turno?: { id: number; numero_turno: string; estado: string; area_id?: number; area?: { id: number; prefijo: string; nombre: string } };
   created_at: string;
+}
+
+export interface ConsaludCategoriaArea {
+  id: number;
+  categoria_exam_id: number;
+  area_id: number;
+  tipo_examen_id: number | null;
+  nombre: string;
+  area?: Area;
+  tipo_examen?: TipoExamen;
 }
 
 export interface Video {

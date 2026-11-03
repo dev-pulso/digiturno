@@ -71,16 +71,23 @@ class ControladorPaciente extends Controller
 
         $token = $request->cookie('consalud_token') ?? $request->bearerToken();
         $data = $this->consaludService->buscarIngresoCompleto($documento, $token);
+        $categoriasAreas = \App\Models\ConsaludCategoriaArea::with('area')->get();
 
         // Fallback local si Consalud falla o no trae ingreso (dev / API caída)
         if (!$data) {
             $local = Paciente::where('numero_documento', $documento)->first();
             if ($local) {
-                $local->load('examenes.tipoExamen.area');
+                $local->load([
+                    'examenes' => function ($q) {
+                        $q->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])
+                          ->with(['turno.area', 'tipoExamen.area']);
+                    },
+                ]);
                 return response()->json([
                     'paciente' => new PacienteResource($local),
                     'ingreso' => null,
                     'historia_status' => null,
+                    'categorias_areas' => $categoriasAreas,
                     'fuente' => 'local',
                     'aviso' => $this->consaludService->ultimoError()
                         ?? 'Paciente local (sin ingreso Consalud)',
@@ -96,12 +103,22 @@ class ControladorPaciente extends Controller
             ], 404);
         }
 
-        $data['paciente']->load('examenes.tipoExamen.area');
+        $ingresoId = $data['ingreso']['id'] ?? null;
+        $data['paciente']->load([
+            'examenes' => function ($q) use ($ingresoId) {
+                $q->when(
+                    $ingresoId,
+                    fn($sub) => $sub->where('consalud_ingreso_id', $ingresoId),
+                    fn($sub) => $sub->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])
+                )->with(['turno.area', 'tipoExamen.area']);
+            },
+        ]);
 
         return response()->json([
             'paciente' => new PacienteResource($data['paciente']),
             'ingreso' => $this->formatearIngreso($data['ingreso']),
             'historia_status' => $data['historia_status'],
+            'categorias_areas' => $categoriasAreas,
             'fuente' => 'consalud',
         ]);
     }

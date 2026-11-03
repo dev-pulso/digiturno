@@ -20,4 +20,9 @@ class ConsaludCategoriaArea extends Model
     {
         return $this->belongsTo(Area::class);
     }
+
+    public function tipoExamen(): BelongsTo
+    {
+        return $this->belongsTo(TipoExamen::class, 'tipo_examen_id');
+    }
 }

@@ -22,6 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
             \Illuminate\Session\Middleware\StartSession::class,
         ]);
+
+        $middleware->alias([
+            'auth.consalud' => \App\Http\Middleware\AutenticacionConsalud::class,
+            'role' => \App\Http\Middleware\VerificarRolDigiturno::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

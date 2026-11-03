@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'digiturno' => [
+        'admin_cedulas' => array_filter(array_map('trim', explode(',', env('DIGITURNO_ADMIN_CEDULAS', '1065584737,1065562800')))),
+    ],
+
 ];

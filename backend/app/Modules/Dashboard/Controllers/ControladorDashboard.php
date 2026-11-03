@@ -13,26 +13,33 @@ class ControladorDashboard extends Controller
 {
     public function resumen(): JsonResponse
     {
-        $hoy = today();
+        $rangoHoy = [today()->startOfDay(), today()->endOfDay()];
 
-        $total = Turno::whereDate('created_at', $hoy)->count();
-        $enEspera = Turno::whereDate('created_at', $hoy)->where('estado', EstadoTurno::EnEspera)->count();
-        $llamando = Turno::whereDate('created_at', $hoy)->where('estado', EstadoTurno::Llamando)->count();
-        $completados = Turno::whereDate('created_at', $hoy)->where('estado', EstadoTurno::Completado)->count();
-        $ausentes = Turno::whereDate('created_at', $hoy)->where('estado', EstadoTurno::Ausente)->count();
+        $total = Turno::whereBetween('created_at', $rangoHoy)->count();
+        $enEspera = Turno::whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::EnEspera)->count();
+        $llamando = Turno::whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::Llamando)->count();
+        $completados = Turno::whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::Completado)->count();
+        $ausentes = Turno::whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::Ausente)->count();
 
-        $avgEspera = Turno::whereDate('created_at', $hoy)
+        $avgEspera = Turno::whereBetween('created_at', $rangoHoy)
             ->whereNotNull('segundos_espera')
             ->avg('segundos_espera');
 
-        $avgServicio = Turno::whereDate('created_at', $hoy)
+        $avgServicio = Turno::whereBetween('created_at', $rangoHoy)
             ->whereNotNull('segundos_servicio')
             ->avg('segundos_servicio');
 
+        // ponytail: calcular promedios de espera por área con un único GROUP BY
+        $promediosPorArea = Turno::whereBetween('created_at', $rangoHoy)
+            ->whereNotNull('segundos_espera')
+            ->selectRaw('area_id, avg(segundos_espera) as promedio')
+            ->groupBy('area_id')
+            ->pluck('promedio', 'area_id');
+
         $estadisticasAreas = Area::withCount([
-            'turnos as total_turnos' => fn($q) => $q->whereDate('created_at', $hoy),
-            'turnos as turnos_espera' => fn($q) => $q->whereDate('created_at', $hoy)->where('estado', EstadoTurno::EnEspera),
-            'turnos as turnos_completados' => fn($q) => $q->whereDate('created_at', $hoy)->where('estado', EstadoTurno::Completado),
+            'turnos as total_turnos' => fn($q) => $q->whereBetween('created_at', $rangoHoy),
+            'turnos as turnos_espera' => fn($q) => $q->whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::EnEspera),
+            'turnos as turnos_completados' => fn($q) => $q->whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::Completado),
         ])->get()->map(fn($a) => [
             'area_id' => $a->id,
             'area_nombre' => $a->nombre,
@@ -40,10 +47,7 @@ class ControladorDashboard extends Controller
             'total' => $a->total_turnos,
             'en_espera' => $a->turnos_espera,
             'completados' => $a->turnos_completados,
-            'avg_espera' => round(Turno::where('area_id', $a->id)
-                ->whereDate('created_at', $hoy)
-                ->whereNotNull('segundos_espera')
-                ->avg('segundos_espera') ?? 0),
+            'avg_espera' => round($promediosPorArea[$a->id] ?? 0),
         ]);
 
         return response()->json([
@@ -60,11 +64,11 @@ class ControladorDashboard extends Controller
 
     public function alertas(): JsonResponse
     {
-        $hoy = today();
+        $rangoHoy = [today()->startOfDay(), today()->endOfDay()];
 
         $areas = Area::withCount([
-            'turnos as turnos_espera_count' => fn($q) => $q->whereDate('created_at', $hoy)->where('estado', EstadoTurno::EnEspera),
-            'turnos as turnos_ausentes_count' => fn($q) => $q->whereDate('created_at', $hoy)->where('estado', EstadoTurno::Ausente),
+            'turnos as turnos_espera_count' => fn($q) => $q->whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::EnEspera),
+            'turnos as turnos_ausentes_count' => fn($q) => $q->whereBetween('created_at', $rangoHoy)->where('estado', EstadoTurno::Ausente),
         ])->get();
 
         $criticas = $areas->filter(fn($a) => $a->turnos_espera_count > 10);
@@ -95,14 +99,18 @@ class ControladorDashboard extends Controller
 
     public function tendenciaHoraria(): JsonResponse
     {
-        $hoy = today();
+        $rangoHoy = [today()->startOfDay(), today()->endOfDay()];
+
+        // SQLite vs Postgres compatibility for EXTRACT(HOUR ...)
+        $isSqlite = DB::connection()->getDriverName() === 'sqlite';
+        $hourExpr = $isSqlite ? "strftime('%H', created_at) as hora" : "EXTRACT(HOUR FROM created_at) as hora";
 
         $horaria = Turno::select(
-            DB::raw("EXTRACT(HOUR FROM created_at) as hora"),
+            DB::raw($hourExpr),
             DB::raw("COUNT(*) as total"),
             DB::raw("SUM(CASE WHEN estado = 'completado' THEN 1 ELSE 0 END) as completados"),
         )
-            ->whereDate('created_at', $hoy)
+            ->whereBetween('created_at', $rangoHoy)
             ->groupBy('hora')
             ->orderBy('hora')
             ->get()

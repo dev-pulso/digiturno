@@ -5,10 +5,71 @@ type DatosAnuncio = {
   prefijo?: string;
 };
 
-// ponytail: un solo anuncio a la vez (consultorio + display WS se pisan sin esto)
 let timer: ReturnType<typeof setTimeout> | null = null;
 let lastTexto = '';
 let lastAt = 0;
+let audioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtxClass) return null;
+  if (!audioCtx) {
+    audioCtx = new AudioCtxClass();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+/**
+ * Reproduce el clásico tono de llamada hospitalaria/aeroportuaria (ding-dong).
+ * D5 (587.33 Hz) seguido de A4 (440 Hz) ~0.9s
+ */
+export function playChime(): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) {
+        resolve();
+        return;
+      }
+
+      const now = ctx.currentTime;
+
+      // Tono 1: Re 5 (587.33 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now);
+      gain1.gain.setValueAtTime(0.35, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.4);
+
+      // Tono 2: La 4 (440 Hz)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(440.0, now + 0.35);
+      gain2.gain.setValueAtTime(0.35, now + 0.35);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.88);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.35);
+      osc2.stop(now + 0.9);
+
+      setTimeout(() => {
+        resolve();
+      }, 850);
+    } catch {
+      resolve();
+    }
+  });
+}
 
 /** "ANDREA CAROLINA" → "Andrea Carolina" (MAYÚSCULAS confunden al TTS) */
 function paraVoz(texto: string): string {
@@ -23,7 +84,6 @@ function buildText(data: DatosAnuncio): string {
   const nombre = data.nombre_paciente ? paraVoz(data.nombre_paciente) : '';
   const area = data.area_nombre ? paraVoz(data.area_nombre) : '';
 
-  // Sin número de turno — solo nombre y área
   if (nombre && area) {
     return `Atención. ${nombre}. Favor pasar a ${area}.`;
   }
@@ -34,7 +94,6 @@ function buildText(data: DatosAnuncio): string {
 
 function isFemaleVoice(v: SpeechSynthesisVoice): boolean {
   const n = v.name.toLowerCase();
-  // Nombres típicos de voces femeninas en Windows/Chrome/Edge
   return /female|femenin|woman|mujer|sabina|paulina|elena|lucia|lucía|maria|maría|carmen|sofia|sofía|isabela|dalia|mónica|monica|pilar|conchita|lola|francisca|salma|karina|esther|zira|helena|google español/.test(n)
     && !/male|masculin|hombre|jorge|pablo|diego|carlos|enrique|raul|raúl|antonio|miguel/.test(n);
 }
@@ -51,7 +110,6 @@ function findVoice(): SpeechSynthesisVoice | undefined {
   const voices = window.speechSynthesis.getVoices().filter((v) => langScore(v.lang) > 0);
   if (!voices.length) return undefined;
 
-  // 1) mujer + es-CO/MX/ES  2) cualquier mujer es  3) mejor lang sin género
   const female = voices.filter(isFemaleVoice);
   const pick = (list: SpeechSynthesisVoice[]) =>
     [...list].sort((a, b) => langScore(b.lang) - langScore(a.lang))[0];
@@ -70,15 +128,28 @@ function speakNow(texto: string): void {
     utterance.lang = 'es-CO';
   }
   utterance.rate = 0.95;
-  utterance.pitch = 1.05; // un poco más agudo si no hay voz femenina explícita
+  utterance.pitch = 1.05;
   utterance.volume = 1;
+
+  utterance.onstart = () => {
+    window.dispatchEvent(new CustomEvent('digiturno:speech-start'));
+  };
+
+  utterance.onend = () => {
+    window.dispatchEvent(new CustomEvent('digiturno:speech-end'));
+  };
+
+  utterance.onerror = () => {
+    window.dispatchEvent(new CustomEvent('digiturno:speech-end'));
+  };
+
   window.speechSynthesis.speak(utterance);
 }
 
 /**
- * Anuncia turno. Debounce 400ms: si llegan eventos duplicados, un solo anuncio.
+ * Anuncia turno. Reproduce campana hospitalaria y luego voz con atenuación sonora.
  */
-export function anunciarTurno(data: DatosAnuncio): void {
+export async function anunciarTurno(data: DatosAnuncio): Promise<void> {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
   const texto = buildText(data);
@@ -90,9 +161,16 @@ export function anunciarTurno(data: DatosAnuncio): void {
   if (timer) clearTimeout(timer);
   window.speechSynthesis.cancel();
 
-  timer = setTimeout(() => {
+  timer = setTimeout(async () => {
     lastTexto = texto;
     lastAt = Date.now();
+
+    // Notificar inicio de anuncio para atenuar video
+    window.dispatchEvent(new CustomEvent('digiturno:speech-start'));
+
+    // Reproducir campanilla hospitalaria
+    await playChime();
+
     const voices = window.speechSynthesis.getVoices();
     if (!voices.length) {
       window.speechSynthesis.onvoiceschanged = () => {
@@ -103,7 +181,7 @@ export function anunciarTurno(data: DatosAnuncio): void {
       speakNow(texto);
     }
     timer = null;
-  }, 400);
+  }, 350);
 }
 
 export function cancelarAnuncio(): void {
@@ -113,5 +191,6 @@ export function cancelarAnuncio(): void {
   }
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel();
+    window.dispatchEvent(new CustomEvent('digiturno:speech-end'));
   }
 }

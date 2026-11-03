@@ -7,12 +7,8 @@ use App\Models\ConsaludIngreso;
 use App\Models\ExamenPaciente;
 use App\Models\Paciente;
 use App\Models\TipoExamen;
-use App\Models\Turno;
 use App\Enums\EstadoExamenPaciente;
-use App\Enums\EstadoTurno;
-use App\Enums\OrigenTurno;
-use App\Events\TurnoCreado;
-use App\Services\GeneradorNumeroTurno;
+use App\Services\ServicioExamenesPacientes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -23,7 +19,7 @@ use Illuminate\Support\Str;
 class ControladorConsaludAsignacion extends Controller
 {
     public function __construct(
-        private GeneradorNumeroTurno $generadorNumero,
+        private ServicioExamenesPacientes $servicioExamenes,
     ) {}
 
     public function asignarTurnos(Request $request): JsonResponse
@@ -38,57 +34,42 @@ class ControladorConsaludAsignacion extends Controller
         ]);
 
         $paciente = Paciente::findOrFail($request->paciente_id);
-
         $examenesSeleccionados = $request->examenes_seleccionados;
-        $turnosResultantes = [];
         $examenesAsignados = [];
         $errores = [];
 
         DB::beginTransaction();
         try {
-            // Resolver mappings y agrupar por área para evitar turnos duplicados.
-            $gruposPorArea = [];
+            // Agrupar items seleccionados por tipo de examen para recopilar examen_ingreso_ids
+            $examenesPorTipo = [];
             foreach ($examenesSeleccionados as $item) {
                 $categoriaExamId = $item['categoria_exam_id'];
 
                 $mapping = ConsaludCategoriaArea::with('area')->where('categoria_exam_id', $categoriaExamId)->first();
                 if (!$mapping || !$mapping->area) {
                     $errores[] = "No hay área configurada para la categoría {$categoriaExamId}.";
-                    $examenesAsignados[] = [
-                        'examen_ingreso_id' => $item['examen_ingreso_id'],
-                        'categoria_exam_id' => $categoriaExamId,
-                        'error' => 'Sin mapping de área',
-                    ];
                     continue;
                 }
 
                 $tipoExamen = $this->resolverTipoExamen($mapping);
                 if (!$tipoExamen) {
                     $errores[] = "No se pudo resolver el tipo de examen para la categoría {$categoriaExamId}.";
-                    $examenesAsignados[] = [
-                        'examen_ingreso_id' => $item['examen_ingreso_id'],
-                        'categoria_exam_id' => $categoriaExamId,
-                        'error' => 'Sin tipo de examen',
-                    ];
                     continue;
                 }
 
-                $areaId = $mapping->area_id;
-                if (!isset($gruposPorArea[$areaId])) {
-                    $gruposPorArea[$areaId] = [
-                        'mapping' => $mapping,
+                $tipoId = $tipoExamen->id;
+                if (!isset($examenesPorTipo[$tipoId])) {
+                    $examenesPorTipo[$tipoId] = [
                         'tipo_examen' => $tipoExamen,
-                        'examenes' => [],
+                        'categoria_exam_id' => $categoriaExamId,
+                        'area_id' => $mapping->area_id,
+                        'examen_ingreso_ids' => [],
                     ];
                 }
-
-                $gruposPorArea[$areaId]['examenes'][] = [
-                    'examen_ingreso_id' => $item['examen_ingreso_id'],
-                    'categoria_exam_id' => $categoriaExamId,
-                ];
+                $examenesPorTipo[$tipoId]['examen_ingreso_ids'][] = $item['examen_ingreso_id'];
             }
 
-            if (empty($gruposPorArea)) {
+            if (empty($examenesPorTipo)) {
                 DB::rollBack();
                 return response()->json([
                     'mensaje' => 'No se pudo asignar ningún examen.',
@@ -96,125 +77,91 @@ class ControladorConsaludAsignacion extends Controller
                 ], 400);
             }
 
-            foreach ($gruposPorArea as $areaId => $grupo) {
-                $mapping = $grupo['mapping'];
-                $tipoExamen = $grupo['tipo_examen'];
-                $area = $mapping->area;
+            foreach ($examenesPorTipo as $tipoId => $data) {
+                $tipoExamen = $data['tipo_examen'];
 
                 $examenPaciente = ExamenPaciente::firstOrCreate(
                     [
                         'paciente_id' => $paciente->id,
+                        'consalud_ingreso_id' => $request->ingreso_id,
                         'tipo_examen_id' => $tipoExamen->id,
                     ],
                     [
                         'estado' => EstadoExamenPaciente::Pendiente,
+                        'examen_ingreso_ids' => $data['examen_ingreso_ids'],
                     ]
                 );
 
-                if ($examenPaciente->estado === EstadoExamenPaciente::Completado) {
-                    $errores[] = "El examen de {$tipoExamen->nombre} ya fue completado.";
-                    foreach ($grupo['examenes'] as $examen) {
-                        $examenesAsignados[] = [
-                            ...$examen,
-                            'area_id' => $areaId,
-                            'tipo_examen_id' => $tipoExamen->id,
-                            'error' => 'Examen ya completado',
-                        ];
-                    }
-                    continue;
+                // Si ya existía previamente en este ingreso, sincronizar IDs de examen de Consalud
+                if ($examenPaciente->examen_ingreso_ids !== $data['examen_ingreso_ids']) {
+                    $examenPaciente->update(['examen_ingreso_ids' => $data['examen_ingreso_ids']]);
                 }
 
-                $turno = null;
-                if ($examenPaciente->estado === EstadoExamenPaciente::EnCola && $examenPaciente->turno_id) {
-                    $turnoExistente = Turno::find($examenPaciente->turno_id);
-                    if ($turnoExistente && $turnoExistente->estado === EstadoTurno::EnEspera) {
-                        $turno = $turnoExistente;
-                    }
-                }
-
-                if (!$turno) {
-                    $examenPaciente->update(['estado' => EstadoExamenPaciente::EnCola]);
-
-                    $numeroTurno = $this->generadorNumero->generar($area);
-
-                    $turno = Turno::create([
-                        'numero_turno' => $numeroTurno,
-                        'area_id' => $areaId,
-                        'paciente_id' => $paciente->id,
-                        'examen_paciente_id' => $examenPaciente->id,
-                        'nombre_paciente' => $paciente->nombre_completo,
-                        'estado' => EstadoTurno::EnEspera,
-                        'origen' => OrigenTurno::Recepcion,
-                    ]);
-
-                    $examenPaciente->update(['turno_id' => $turno->id]);
-
-                    $turno->load('area', 'examenPaciente.tipoExamen');
-
-                    try {
-                        broadcast(new TurnoCreado($turno));
-                    } catch (\Exception $e) {
-                        Log::warning('Consalud: broadcast fallido: ' . $e->getMessage());
-                    }
-                }
-
-                $turnosResultantes[] = $turno;
-
-                foreach ($grupo['examenes'] as $examen) {
-                    $examenesAsignados[] = [
-                        ...$examen,
-                        'area_id' => $areaId,
-                        'tipo_examen_id' => $tipoExamen->id,
-                        'turno_id' => $turno->id,
-                    ];
-                }
+                $examenesAsignados[] = [
+                    'tipo_examen_id' => $tipoExamen->id,
+                    'tipo_examen_nombre' => $tipoExamen->nombre,
+                    'categoria_exam_id' => $data['categoria_exam_id'],
+                    'area_id' => $data['area_id'],
+                    'examen_ingreso_ids' => $data['examen_ingreso_ids'],
+                    'estado' => $examenPaciente->estado->value,
+                ];
             }
 
-            if (empty($turnosResultantes)) {
-                DB::rollBack();
-                return response()->json([
-                    'mensaje' => 'No se pudo asignar ningún examen.',
-                    'errores' => $errores,
-                ], 400);
-            }
+            // Enrutamiento secuencial: auto-encolar paciente en la estación con menor cola
+            $turnoActivo = $this->servicioExamenes->autoEncolarPaciente($paciente->id, $request->ingreso_id);
 
+            // Registro de auditoría
             ConsaludIngreso::create([
                 'paciente_id' => $paciente->id,
                 'consalud_ingreso_id' => $request->ingreso_id,
                 'ingreso_json' => $request->ingreso,
                 'examenes_asignados' => $examenesAsignados,
-                'turnos_creados' => array_map(fn($t) => [
-                    'id' => $t->id,
-                    'numero_turno' => $t->numero_turno,
-                    'area_id' => $t->area_id,
-                    'area_nombre' => $t->area->nombre ?? null,
-                ], $turnosResultantes),
+                'turnos_creados' => $turnoActivo ? [[
+                    'id' => $turnoActivo->id,
+                    'numero_turno' => $turnoActivo->numero_turno,
+                    'area_id' => $turnoActivo->area_id,
+                    'area_nombre' => $turnoActivo->area->nombre ?? null,
+                ]] : [],
             ]);
 
             DB::commit();
 
-            $turnosUnicos = collect($turnosResultantes)->unique('id')->values();
-            $nuevos = $turnosUnicos->filter(fn($t) => $t->wasRecentlyCreated)->count();
-            $reutilizados = $turnosUnicos->count() - $nuevos;
+            // Listar exámenes que quedaron en estado pendiente para las siguientes estaciones
+            $examenesPendientesSiguientes = ExamenPaciente::where('paciente_id', $paciente->id)
+                ->where('consalud_ingreso_id', $request->ingreso_id)
+                ->where('estado', EstadoExamenPaciente::Pendiente)
+                ->with('tipoExamen.area')
+                ->get()
+                ->map(fn($ep) => [
+                    'id' => $ep->id,
+                    'tipo_examen_id' => $ep->tipo_examen_id,
+                    'nombre' => $ep->tipoExamen?->nombre,
+                    'area_nombre' => $ep->tipoExamen?->area?->nombre,
+                    'estado' => $ep->estado->value,
+                ]);
 
-            $mensaje = match (true) {
-                $nuevos > 0 && $reutilizados > 0 => "{$nuevos} turno(s) nuevo(s) y {$reutilizados} reutilizado(s).",
-                $nuevos > 0 => "{$nuevos} turno(s) creado(s).",
-                $reutilizados > 0 => "{$reutilizados} turno(s) ya estaba(n) en cola.",
-                default => 'Turnos asignados.',
-            };
+            $turnoData = null;
+            if ($turnoActivo) {
+                $turnoActivo->loadMissing('area', 'examenPaciente.tipoExamen');
+                $turnoData = [
+                    'id' => $turnoActivo->id,
+                    'numero_turno' => $turnoActivo->numero_turno,
+                    'area_id' => $turnoActivo->area_id,
+                    'area_nombre' => $turnoActivo->area->nombre ?? null,
+                    'area_prefijo' => $turnoActivo->area->prefijo ?? null,
+                    'examenes_nombres' => $turnoActivo->metadatos['examenes_nombres'] ?? [$turnoActivo->examenPaciente?->tipoExamen?->nombre],
+                    'estado' => $turnoActivo->estado->value,
+                ];
+            }
 
             return response()->json([
-                'mensaje' => $mensaje,
+                'mensaje' => $turnoActivo
+                    ? "Turno asignado: {$turnoActivo->numero_turno} ({$turnoActivo->area->nombre})."
+                    : "Exámenes registrados en circuito.",
                 'errores' => $errores,
-                'turnos' => $turnosUnicos->map(fn($t) => [
-                    'id' => $t->id,
-                    'numero_turno' => $t->numero_turno,
-                    'area_id' => $t->area_id,
-                    'area_nombre' => $t->area->nombre ?? null,
-                    'area_prefijo' => $t->area->prefijo ?? null,
-                    'examen_nombre' => $t->examenPaciente?->tipoExamen?->nombre ?? null,
-                ])->all(),
+                'turno_activo' => $turnoData,
+                'turnos' => $turnoData ? [$turnoData] : [],
+                'examenes_pendientes_circuito' => $examenesPendientesSiguientes,
             ], 201);
 
         } catch (\Exception $e) {

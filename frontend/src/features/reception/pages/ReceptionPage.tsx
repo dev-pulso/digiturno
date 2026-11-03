@@ -53,6 +53,7 @@ export function ReceptionPage() {
     paciente,
     ingreso,
     historiaStatus,
+    categoriasAreas,
     buscando,
     asignando,
     buscarPorDocumento,
@@ -193,10 +194,10 @@ export function ReceptionPage() {
     }
     try {
       const res = await api.get("/turnos", {
-        params: { hoy: true, per_page: 100 },
+        params: { hoy: true, numero_turno: num },
       });
       const turns: Turno[] = res.data.data || res.data;
-      const found = turns.find((t) => t.numero_turno === num);
+      const found = turns[0];
       if (!found) {
         toast.error(`No se encontró ${num}`);
         return;
@@ -258,22 +259,20 @@ export function ReceptionPage() {
     });
   const soloEnEspera = turnosOrdenados.filter((t) => t.estado === "en_espera");
 
-  const CATEGORIA_AREA_CODES: Record<number, string> = {
-    1: 'c1', 2: 'tm', 3: 'c2', 4: 'c3', 5: 'c1', 6: 'c1',
-    7: 'tm', 8: 'tm', 9: 'tm', 10: 'tm', 11: 'tm', 12: 'tm',
-    13: 'c4', 15: 'c2',
+  const getAreaPorCategoria = (categoriaExamId?: number) => {
+    if (!categoriaExamId) return undefined;
+    const mapping = categoriasAreas.find((c) => c.categoria_exam_id === categoriaExamId);
+    if (mapping?.area) return mapping.area;
+    if (mapping?.area_id) return areas.find((a) => a.id === mapping.area_id);
+    return undefined;
   };
 
-  const getAreaPorCategoria = (categoriaExamId?: number) =>
-    categoriaExamId ? areas.find((a) => a.codigo === CATEGORIA_AREA_CODES[categoriaExamId]) : undefined;
-
   const isExamenCerrado = (
-    ingresoId: number,
+    _ingresoId: number,
     _examenId: number,
     categoriaExamId: number,
   ): boolean => {
     const status = historiaStatus;
-
     if (!status) return false;
     switch (categoriaExamId) {
       case 1:
@@ -301,40 +300,82 @@ export function ReceptionPage() {
         return false;
     }
   };
+
   const isExamenCompleto = (
-    ingresoId: number,
+    _ingresoId: number,
     categoriaExamId: number,
     examenId: number,
   ) => {
     if (!historiaStatus) return false;
     const estado = historiaStatus;
-    if (!estado) return false;
     switch (categoriaExamId) {
       case 1:
-        return estado.examen_fisico;
+        return !!estado.examen_fisico;
       case 2:
-        return estado.laboratorio_examen_ids.includes(examenId);
+        return !!estado.laboratorio_examen_ids?.includes(examenId);
       case 3:
-        return estado.visiometria;
+        return !!estado.visiometria;
       case 4:
-        return estado.audiometria;
+        return !!estado.audiometria;
       case 5:
-        return estado.espirometria;
+        return !!estado.espirometria;
       case 7:
       case 8:
       case 9:
       case 10:
       case 11:
       case 12:
-        return estado.radiografia_examen_ids.includes(examenId);
+        return !!estado.radiografia_examen_ids?.includes(examenId);
       case 15:
-        return estado.optometria;
+        return !!estado.optometria;
       case 13:
-        return estado.prueba_psicosensometrica;
+        return !!estado.prueba_psicosensometrica;
       default:
         return false;
     }
   };
+
+  const getEstadoVisualExamen = useCallback((ex: any) => {
+    const catId = ex.examen?.categoria_exam_id;
+    const cerrado = isExamenCerrado(ingreso?.id ?? 0, ex.examen?.id, catId);
+    if (cerrado) return { tipo: 'cerrado_consalud', etiqueta: 'Cerrado en Consalud', interactivo: false };
+
+    const completo = isExamenCompleto(ingreso?.id ?? 0, catId, ex.examen?.id);
+    if (completo) return { tipo: 'completo_consalud', etiqueta: 'Realizado en Consalud', interactivo: false };
+
+    const catMapping = categoriasAreas.find((c) => c.categoria_exam_id === catId);
+    const ep = paciente?.examenes?.find((e) =>
+      (e.examen_ingreso_ids && e.examen_ingreso_ids.includes(ex.id)) ||
+      (e.tipo_examen_id && catMapping?.tipo_examen_id && e.tipo_examen_id === catMapping.tipo_examen_id)
+    );
+
+    if (ep) {
+      const prefijo = ep.tipo_examen?.area?.prefijo || ep.turno?.area?.prefijo || 'Consultorio';
+      if (ep.estado === 'completado') {
+        return { tipo: 'atendido_digiturno', etiqueta: `Atendido en ${prefijo}`, interactivo: false, ep };
+      }
+      if (ep.estado === 'en_cola' || ep.turno?.estado === 'llamando') {
+        const txt = ep.turno?.estado === 'llamando'
+          ? `En atención (${prefijo})`
+          : `En cola: ${ep.turno?.numero_turno || prefijo}`;
+        return { tipo: 'en_cola_digiturno', etiqueta: txt, interactivo: false, ep };
+      }
+      if (ep.estado === 'pendiente') {
+        return { tipo: 'pendiente_circuito', etiqueta: 'En circuito (Pendiente de turno)', interactivo: false, ep };
+      }
+    }
+
+    return { tipo: 'disponible', etiqueta: 'Disponible para asignar', interactivo: true };
+  }, [ingreso, historiaStatus, categoriasAreas, paciente]);
+
+  useEffect(() => {
+    if (showIngresoModal && ingreso?.examenes) {
+      const disponibles = ingreso.examenes
+        .filter((ex: any) => getEstadoVisualExamen(ex).interactivo)
+        .map((ex: any) => ex.id);
+      setExamenesConsaludSeleccionados(disponibles);
+    }
+  }, [showIngresoModal, ingreso, getEstadoVisualExamen]);
 
   return (
     <div className="h-screen bg-background flex flex-col">
@@ -371,6 +412,41 @@ export function ReceptionPage() {
             Pantallas
           </Button>
 
+          {user?.rol === 'admin' && (
+            <div className="hidden xl:flex items-center gap-1 bg-muted/60 p-1 rounded-lg border border-border/50 text-xs">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/50 font-medium transition-colors cursor-pointer"
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => navigate('/admin/personal')}
+                className="px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/50 font-medium transition-colors cursor-pointer"
+              >
+                Personal
+              </button>
+              <button
+                onClick={() => navigate('/admin/areas')}
+                className="px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/50 font-medium transition-colors cursor-pointer"
+              >
+                Consultorios
+              </button>
+              <button
+                onClick={() => navigate('/admin/examenes')}
+                className="px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/50 font-medium transition-colors cursor-pointer"
+              >
+                Exámenes
+              </button>
+              <button
+                onClick={() => navigate('/admin/videos')}
+                className="px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/50 font-medium transition-colors cursor-pointer"
+              >
+                Videos
+              </button>
+            </div>
+          )}
+
           {user && (
             <div className="flex items-center gap-2.5 pl-2.5 border-l border-border">
               <div className="flex flex-col text-right">
@@ -378,7 +454,7 @@ export function ReceptionPage() {
                   {[user.primer_nombre, user.primer_apellido].filter(Boolean).join(" ") || user.usuario}
                 </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
-                  Recepción
+                  {user.rol || 'Recepción'}
                 </span>
               </div>
               <Button
@@ -886,53 +962,55 @@ export function ReceptionPage() {
                     <div className="space-y-1.5">
                       {ingreso.examenes.map((ex: any) => {
                         const examName = ex.examen?.nbr_examen || "Sin nombre";
-                        const estaCerrado = isExamenCerrado(
-                          ingreso.id,
-                          ex.examen?.id,
-                          ex.examen?.categoria_exam_id,
-                        );
-                        const estaCompleto = isExamenCompleto(
-                          ingreso.id,
-                          ex.examen?.categoria_exam_id,
-                          ex.examen?.id,
-                        );
-                        const estaPendiente = !estaCerrado && !estaCompleto;
+                        const st = getEstadoVisualExamen(ex);
+                        const area = getAreaPorCategoria(ex.examen?.categoria_exam_id);
+
                         return (
                           <div
                             key={ex.id}
-                            onClick={() => estaPendiente && toggleExamenConsalud(ex.id)}
-                            className={`flex items-center justify-between rounded-lg p-2.5 border border-border cursor-pointer
-                              ${
-                                estaCerrado
-                                  ? "bg-yellow-500/10 border-yellow-500/30 border-l-4 cursor-not-allowed"
-                                  : estaCompleto
-                                    ? "bg-emerald-500/10 border-emerald-500/30 border-l-4 cursor-not-allowed"
-                                    : examenesConsaludSeleccionados.includes(ex.id)
-                                      ? "bg-primary/10 border-primary/40 border-l-4"
-                                      : "bg-card border-border hover:bg-accent"
-                              }
-                              transition-colors`}
+                            onClick={() => st.interactivo && toggleExamenConsalud(ex.id)}
+                            className={`flex items-center justify-between rounded-lg p-2.5 border transition-colors ${
+                              st.tipo === 'cerrado_consalud'
+                                ? 'bg-yellow-500/10 border-yellow-500/30 border-l-4 cursor-not-allowed'
+                                : st.tipo === 'completo_consalud'
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 border-l-4 cursor-not-allowed'
+                                  : st.tipo === 'atendido_digiturno'
+                                    ? 'bg-emerald-500/10 border-emerald-500/30 border-l-4 cursor-not-allowed'
+                                    : st.tipo === 'en_cola_digiturno'
+                                      ? 'bg-blue-500/10 border-blue-500/30 border-l-4 cursor-not-allowed'
+                                      : st.tipo === 'pendiente_circuito'
+                                        ? 'bg-indigo-500/10 border-indigo-500/30 border-l-4 cursor-not-allowed'
+                                        : examenesConsaludSeleccionados.includes(ex.id)
+                                          ? 'bg-primary/10 border-primary/40 border-l-4 cursor-pointer'
+                                          : 'bg-card border-border hover:bg-accent cursor-pointer'
+                            }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-7 shrink-0 flex items-center justify-center pointer-events-none">
-                                {estaCerrado && (
+                              <div className="w-6 shrink-0 flex items-center justify-center">
+                                {st.tipo === 'cerrado_consalud' && (
                                   <HugeiconsIcon
                                     icon={LockedFreeIcons}
                                     className="h-4 w-4 text-yellow-500"
                                   />
                                 )}
-                                {estaCompleto && (
+                                {(st.tipo === 'completo_consalud' || st.tipo === 'atendido_digiturno') && (
                                   <HugeiconsIcon
                                     icon={CheckmarkBadge01Icon}
                                     className="h-4 w-4 text-emerald-500"
                                   />
                                 )}
-                                {estaPendiente && (
+                                {st.tipo === 'en_cola_digiturno' && (
+                                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                                )}
+                                {st.tipo === 'pendiente_circuito' && (
+                                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                                )}
+                                {st.interactivo && (
                                   <input
                                     type="checkbox"
                                     checked={examenesConsaludSeleccionados.includes(ex.id)}
                                     readOnly
-                                    className="accent-primary-700"
+                                    className="accent-primary cursor-pointer"
                                   />
                                 )}
                               </div>
@@ -940,15 +1018,41 @@ export function ReceptionPage() {
                               <span className="font-mono text-[10px] text-muted-foreground shrink-0">
                                 {ex.examen?.cdg_examen} -{" "}
                               </span>
-                              <span className="text-xs truncate">
+                              <span className="text-xs truncate font-medium">
                                 {examName}
                               </span>
                             </div>
-                            {(() => {
-                              const area = getAreaPorCategoria(ex.examen?.categoria_exam_id);
-                              return area ? (
+
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              {st.tipo === 'cerrado_consalud' && (
+                                <Badge variant="outline" className="border-yellow-500/30 text-yellow-600 dark:text-yellow-400 text-[10px]">
+                                  Cerrado en Consalud
+                                </Badge>
+                              )}
+                              {st.tipo === 'completo_consalud' && (
+                                <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                                  Realizado en Consalud
+                                </Badge>
+                              )}
+                              {st.tipo === 'atendido_digiturno' && (
+                                <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                                  {st.etiqueta}
+                                </Badge>
+                              )}
+                              {st.tipo === 'en_cola_digiturno' && (
+                                <Badge variant="outline" className="border-blue-500/30 text-blue-600 dark:text-blue-400 text-[10px]">
+                                  {st.etiqueta}
+                                </Badge>
+                              )}
+                              {st.tipo === 'pendiente_circuito' && (
+                                <Badge variant="outline" className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 text-[10px]">
+                                  En circuito (Pendiente de turno)
+                                </Badge>
+                              )}
+
+                              {area ? (
                                 <span
-                                  className="font-mono text-[10px] shrink-0 ml-2 px-2 py-0.5 rounded-full border"
+                                  className="font-mono text-[10px] px-2 py-0.5 rounded-full border"
                                   style={{
                                     background: `${area.color}18`,
                                     borderColor: `${area.color}40`,
@@ -957,8 +1061,8 @@ export function ReceptionPage() {
                                 >
                                   {area.prefijo}
                                 </span>
-                              ) : null;
-                            })()}
+                              ) : null}
+                            </div>
                           </div>
                         );
                       })}

@@ -95,9 +95,22 @@ export function ConsultorioPage() {
 
   const handleCompletar = async (turnoId: number) => {
     try {
-      await completarTurno(turnoId);
-      toast.success('Turno completado');
-    } catch { toast.error('Error'); }
+      const res: any = await completarTurno(turnoId);
+      if (res?.siguiente_turno) {
+        const sig = res.siguiente_turno;
+        const nombreArea = sig.area?.nombre || 'Siguiente Consultorio';
+        toast.success(
+          `Turno completado. Siguiente estación del paciente: ${nombreArea} (Turno ${sig.numero_turno})`,
+          { duration: 6000 }
+        );
+      } else {
+        toast.success('Turno completado. El paciente finalizó todos sus exámenes de hoy.', {
+          duration: 6000,
+        });
+      }
+    } catch {
+      toast.error('Error al completar turno');
+    }
   };
 
   const handleAusente = async (turnoId: number) => {
@@ -199,7 +212,12 @@ export function ConsultorioPage() {
                 <div className="font-mono font-medium text-base min-w-[80px]" style={{ color: area.color }}>{turno.numero_turno}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{turno.nombre_paciente}</p>
-                  {turno.examen_paciente?.tipo_examen?.nombre && <p className="text-[11px] text-primary">{turno.examen_paciente.tipo_examen.nombre}</p>}
+                  {(() => {
+                    const exTexto = turno.examenes_nombres?.length
+                      ? turno.examenes_nombres.join(' + ')
+                      : turno.examen_paciente?.tipo_examen?.nombre;
+                    return exTexto ? <p className="text-[11px] text-primary">{exTexto}</p> : null;
+                  })()}
                   {turno.ocupado_en && (
                     <p className="font-mono text-[10px] text-amber-400 mt-0.5">
                       Atendiendo en {turno.ocupado_en.prefijo}
@@ -231,7 +249,16 @@ export function ConsultorioPage() {
               <Card className="p-6 bg-card border-border text-center" style={{ borderColor: `${area.color}44` }}>
                 <p className="font-display font-extrabold text-6xl leading-none mb-3" style={{ color: area.color }}>{actual.numero_turno}</p>
                 <p className="text-lg font-semibold mb-1">{actual.nombre_paciente}</p>
-                {actual.examen_paciente?.tipo_examen?.nombre && <p className="text-sm text-primary font-medium mb-2">{actual.examen_paciente.tipo_examen.nombre}</p>}
+                {(() => {
+                  const exTexto = actual.examenes_nombres?.length
+                    ? actual.examenes_nombres.join(' + ')
+                    : actual.examen_paciente?.tipo_examen?.nombre;
+                  return exTexto ? (
+                    <div className="bg-primary/10 border border-primary/20 rounded-md py-1.5 px-3 mb-3 max-w-sm mx-auto">
+                      <p className="text-xs text-primary font-semibold">{exTexto}</p>
+                    </div>
+                  ) : null;
+                })()}
                 <Badge className="mb-4 text-xs" style={{ background: `${area.color}20`, color: area.color, border: 'none' }}>
                   Llamado {actual.contador_llamados} {actual.contador_llamados !== 1 ? 'veces' : 'vez'}
                 </Badge>

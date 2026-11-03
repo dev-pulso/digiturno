@@ -18,7 +18,7 @@ class ServicioExamenesPacientes
         private GeneradorNumeroTurno $generadorNumero,
     ) {}
 
-    public function asignarExamenes(int $pacienteId, array $tiposExamenesIds): array
+    public function asignarExamenes(int $pacienteId, array $tiposExamenesIds, ?int $consaludIngresoId = null): array
     {
         $creados = [];
 
@@ -26,6 +26,7 @@ class ServicioExamenesPacientes
             $examen = ExamenPaciente::firstOrCreate(
                 [
                     'paciente_id' => $pacienteId,
+                    'consalud_ingreso_id' => $consaludIngresoId,
                     'tipo_examen_id' => $tipoExamenId,
                 ],
                 [
@@ -36,20 +37,38 @@ class ServicioExamenesPacientes
         }
 
         if (!empty($creados)) {
-            $this->autoEncolarPaciente($pacienteId);
+            $this->autoEncolarPaciente($pacienteId, $consaludIngresoId);
         }
 
         return $creados;
     }
 
-    public function autoEncolarPaciente(int $pacienteId): ?Turno
+    public function autoEncolarPaciente(int $pacienteId, ?int $consaludIngresoId = null): ?Turno
     {
         $paciente = Paciente::findOrFail($pacienteId);
 
-        $examenesPendientes = ExamenPaciente::where('paciente_id', $pacienteId)
+        // Anti-duplicado: si el paciente ya tiene un turno en espera o llamando hoy en cualquier área,
+        // retornarlo para garantizar un único turno activo a la vez.
+        $turnoActivo = Turno::where('paciente_id', $pacienteId)
+            ->whereIn('estado', [EstadoTurno::EnEspera, EstadoTurno::Llamando])
+            ->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])
+            ->first();
+
+        if ($turnoActivo) {
+            return $turnoActivo;
+        }
+
+        $query = ExamenPaciente::where('paciente_id', $pacienteId)
             ->where('estado', EstadoExamenPaciente::Pendiente)
-            ->with('tipoExamen.area')
-            ->get();
+            ->with('tipoExamen.area');
+
+        if ($consaludIngresoId !== null) {
+            $query->where('consalud_ingreso_id', $consaludIngresoId);
+        } else {
+            $query->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()]);
+        }
+
+        $examenesPendientes = $query->get();
 
         if ($examenesPendientes->isEmpty()) {
             return null;
@@ -57,8 +76,8 @@ class ServicioExamenesPacientes
 
         $areasPendientes = $examenesPendientes
             ->pluck('tipoExamen.area')
-            ->unique('id')
-            ->filter(fn($a) => $a && $a->activo);
+            ->filter(fn($a) => $a && $a->activo)
+            ->unique('id');
 
         if ($areasPendientes->isEmpty()) {
             return null;
@@ -66,11 +85,11 @@ class ServicioExamenesPacientes
 
         $this->limpiarTurnosViejos($areasPendientes->pluck('id')->toArray());
 
-        // ponytail: un solo GROUP BY en vez de count() por área (N+1)
+        // Calcular carga actual con un solo GROUP BY de turnos en_espera hoy
         $areasIds = $areasPendientes->pluck('id');
         $conteos = Turno::whereIn('area_id', $areasIds)
             ->where('estado', EstadoTurno::EnEspera)
-            ->whereDate('created_at', today())
+            ->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])
             ->selectRaw('area_id, count(*) as total')
             ->groupBy('area_id')
             ->pluck('total', 'area_id');
@@ -79,38 +98,46 @@ class ServicioExamenesPacientes
             ->sortBy(fn(Area $a) => $conteos[$a->id] ?? 0)
             ->first();
 
-        // Anti-duplicado: si ya hay turno en espera hoy para este paciente en el área elegida, no crear otro
-        $turnoExistente = Turno::where('area_id', $areaElegida->id)
-            ->where('paciente_id', $pacienteId)
-            ->where('estado', EstadoTurno::EnEspera)
-            ->whereDate('created_at', today())
-            ->first();
+        // Obtener todos los exámenes pendientes del paciente en el área elegida
+        $examenesDelArea = $examenesPendientes
+            ->filter(fn($ep) => $ep->tipoExamen?->area_id === $areaElegida->id);
 
-        if ($turnoExistente) {
-            return $turnoExistente;
+        if ($examenesDelArea->isEmpty()) {
+            return null;
         }
 
-        $examenElegido = $examenesPendientes
-            ->firstWhere('tipoExamen.area_id', $areaElegida->id);
+        $nombresExamenes = $examenesDelArea
+            ->map(fn($ep) => $ep->tipoExamen?->nombre)
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
 
-        $turno = DB::transaction(function () use ($paciente, $areaElegida, $examenElegido) {
+        $primerExamen = $examenesDelArea->first();
+
+        $turno = DB::transaction(function () use ($paciente, $areaElegida, $primerExamen, $examenesDelArea, $nombresExamenes, $consaludIngresoId) {
             $numeroTurno = $this->generadorNumero->generar($areaElegida);
 
             $turno = Turno::create([
                 'numero_turno' => $numeroTurno,
                 'area_id' => $areaElegida->id,
                 'paciente_id' => $paciente->id,
+                'consalud_ingreso_id' => $consaludIngresoId ?? $primerExamen->consalud_ingreso_id,
+                'examen_paciente_id' => $primerExamen->id,
                 'nombre_paciente' => $paciente->nombre_completo,
                 'estado' => EstadoTurno::EnEspera,
                 'origen' => OrigenTurno::Recepcion,
+                'metadatos' => [
+                    'examenes_nombres' => $nombresExamenes,
+                ],
             ]);
 
-            $examenElegido->update([
-                'estado' => EstadoExamenPaciente::EnCola,
-                'turno_id' => $turno->id,
-            ]);
-
-            $turno->update(['examen_paciente_id' => $examenElegido->id]);
+            foreach ($examenesDelArea as $ep) {
+                $ep->update([
+                    'estado' => EstadoExamenPaciente::EnCola,
+                    'turno_id' => $turno->id,
+                ]);
+            }
 
             return $turno;
         });
@@ -126,18 +153,18 @@ class ServicioExamenesPacientes
         return $turno;
     }
 
-    public function completarYAvanzar(Turno $turno): void
+    public function completarYAvanzar(Turno $turno): ?Turno
     {
-        if ($turno->examen_paciente_id) {
-            $examen = ExamenPaciente::find($turno->examen_paciente_id);
-            if ($examen) {
-                $examen->update(['estado' => EstadoExamenPaciente::Completado]);
-            }
-        }
+        // Marcar como Completado todos los registros asociados al turno
+        ExamenPaciente::where('turno_id', $turno->id)
+            ->when($turno->examen_paciente_id, fn($q) => $q->orWhere('id', $turno->examen_paciente_id))
+            ->update(['estado' => EstadoExamenPaciente::Completado]);
 
         if ($turno->paciente_id) {
-            $this->autoEncolarPaciente($turno->paciente_id);
+            return $this->autoEncolarPaciente($turno->paciente_id, $turno->consalud_ingreso_id);
         }
+
+        return null;
     }
 
     private function limpiarTurnosViejos(array $areaIds): void

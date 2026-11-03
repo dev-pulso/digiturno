@@ -12,15 +12,19 @@ class ExamenPaciente extends Model
 
     protected $fillable = [
         'paciente_id',
+        'consalud_ingreso_id',
         'tipo_examen_id',
         'estado',
         'turno_id',
+        'examen_ingreso_ids',
     ];
 
     protected function casts(): array
     {
         return [
             'estado' => EstadoExamenPaciente::class,
+            'consalud_ingreso_id' => 'integer',
+            'examen_ingreso_ids' => 'array',
         ];
     }
 

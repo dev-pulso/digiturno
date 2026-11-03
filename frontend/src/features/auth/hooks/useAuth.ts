@@ -83,6 +83,26 @@ export function useAuth() {
     }
   }, [token, user, logout]);
 
+  // Validación de sesión real contra el backend al montar para sincronizar el rol real
+  useEffect(() => {
+    const storedToken = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('ips-token');
+    if (!storedToken && !user) return;
+
+    api.get<ConsaludUser>('/auth/me')
+      .then((res) => {
+        const verifiedUser = res.data;
+        if (verifiedUser) {
+          localStorage.setItem(USER_KEY, JSON.stringify(verifiedUser));
+          setUser(verifiedUser);
+        }
+      })
+      .catch((err) => {
+        if (err?.response?.status === 401 || err?.response?.status === 403) {
+          logout(false);
+        }
+      });
+  }, [logout]);
+
   // Listener para detectar actividad del usuario
   useEffect(() => {
     if (!token && !user) return;

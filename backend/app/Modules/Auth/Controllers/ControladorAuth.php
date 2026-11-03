@@ -57,7 +57,8 @@ class ControladorAuth extends Controller
             ] : null;
         } else {
             // Si la cédula es una de las admin iniciales o por defecto recepción
-            $esAdmin = in_array((string)$identificacion, ['1065584737', '1065562800']);
+            $adminCedulas = config('services.digiturno.admin_cedulas', ['1065584737', '1065562800']);
+            $esAdmin = in_array((string)$identificacion, $adminCedulas);
             $usuario['rol'] = $esAdmin ? 'admin' : 'recepcion';
             $usuario['puede_rotar'] = true;
             $usuario['area_predeterminada'] = null;
@@ -119,7 +120,8 @@ class ControladorAuth extends Controller
                 'prefijo' => $personal->areaPredeterminada->prefijo,
             ] : null;
         } else {
-            $esAdmin = in_array((string)$identificacion, ['1065584737', '1065562800']);
+            $adminCedulas = config('services.digiturno.admin_cedulas', ['1065584737', '1065562800']);
+            $esAdmin = in_array((string)$identificacion, $adminCedulas);
             $perfil['rol'] = $esAdmin ? 'admin' : 'recepcion';
             $perfil['puede_rotar'] = true;
             $perfil['area_predeterminada'] = null;

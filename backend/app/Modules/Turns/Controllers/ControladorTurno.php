@@ -34,6 +34,10 @@ class ControladorTurno extends Controller
     {
         $query = Turno::with('area', 'examenPaciente.tipoExamen');
 
+        if ($request->filled('numero_turno')) {
+            $query->where('numero_turno', strtoupper(trim($request->numero_turno)));
+        }
+
         if ($request->has('area_id')) {
             $query->where('area_id', $request->area_id);
         }
@@ -44,7 +48,7 @@ class ControladorTurno extends Controller
         }
 
         if ($request->boolean('hoy')) {
-            $query->whereDate('created_at', today());
+            $query->hoy();
         }
 
         $turnos = $query->orderBy('created_at', 'desc')
@@ -123,11 +127,17 @@ class ControladorTurno extends Controller
         $turno = $this->maquinaEstados->completar($turno);
         $turno->load('area', 'examenPaciente.tipoExamen');
 
-        $this->servicioExamenes->completarYAvanzar($turno);
+        $siguienteTurno = $this->servicioExamenes->completarYAvanzar($turno);
 
         try { broadcast(new TurnoCompletado($turno)); } catch (\Exception $e) { \Illuminate\Support\Facades\Log::warning("Broadcast fallido: " . $e->getMessage()); }
 
-        return response()->json(new TurnoResource($turno));
+        $turnoData = (new TurnoResource($turno))->resolve();
+        $siguienteData = $siguienteTurno ? (new TurnoResource($siguienteTurno->load('area', 'examenPaciente.tipoExamen')))->resolve() : null;
+
+        return response()->json([
+            ...$turnoData,
+            'siguiente_turno' => $siguienteData,
+        ]);
     }
 
     public function ausente(Turno $turno): JsonResponse

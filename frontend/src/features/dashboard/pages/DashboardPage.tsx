@@ -37,9 +37,9 @@ interface Alert {
 }
 
 interface HourlyData {
-  hour: number;
+  hora: number;
   total: number;
-  completed: number;
+  completados: number;
 }
 
 function formatDuration(seconds: number): string {
@@ -247,7 +247,7 @@ export function DashboardPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="hour" tickFormatter={formatHour} stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="hora" tickFormatter={formatHour} stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} />
                   <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{
@@ -260,7 +260,7 @@ export function DashboardPage() {
                     labelFormatter={formatHour}
                   />
                   <Area type="monotone" dataKey="total" stroke="#044B84" fill="url(#totalGrad)" strokeWidth={2} name="Creados" />
-                  <Area type="monotone" dataKey="completed" stroke="#4ade80" fill="url(#completedGrad)" strokeWidth={2} name="Atendidos" />
+                  <Area type="monotone" dataKey="completados" stroke="#4ade80" fill="url(#completedGrad)" strokeWidth={2} name="Atendidos" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -289,7 +289,7 @@ export function DashboardPage() {
                   }}
                 />
                 <Bar dataKey="total" name="Total" radius={[4, 4, 0, 0]} fill="#044B84" />
-                <Bar dataKey="completed" name="Atendidos" radius={[4, 4, 0, 0]} fill="#4ade80" />
+                <Bar dataKey="completados" name="Atendidos" radius={[4, 4, 0, 0]} fill="#4ade80" />
               </BarChart>
             </ResponsiveContainer>
           </div>
